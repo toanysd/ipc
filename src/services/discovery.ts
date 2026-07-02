@@ -1,5 +1,16 @@
-// @ts-ignore
-import onvif from 'node-onvif';
+// Dynamic import to avoid Vercel build failures with native modules
+let onvif: any = null;
+async function getOnvif() {
+  if (!onvif) {
+    try {
+      onvif = (await import('node-onvif')).default;
+    } catch {
+      console.warn('[discovery] node-onvif not available (serverless environment)');
+      onvif = null;
+    }
+  }
+  return onvif;
+}
 import os from 'os';
 import net from 'net';
 
@@ -125,14 +136,19 @@ export async function discoverCameras(): Promise<DiscoveredCamera[]> {
     } else {
       try {
         if (process.env.NODE_ENV === 'test') {
-          infos = await onvif.startProbe();
+          const onvifMod = await getOnvif();
+          infos = onvifMod ? await onvifMod.startProbe() : [];
         } else {
           if (!activeProbe) {
             activeProbe = Promise.race([
-              onvif.startProbe().catch((e: any) => { 
-                console.warn('Probe failed:', e?.message || e); 
-                return []; 
-              }),
+              (async () => {
+                const onvifMod = await getOnvif();
+                if (!onvifMod) return [];
+                return onvifMod.startProbe().catch((e: any) => { 
+                  console.warn('Probe failed:', e?.message || e); 
+                  return []; 
+                });
+              })(),
               new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 3000))
             ]) as Promise<any[]>;
             
@@ -217,12 +233,13 @@ export async function discoverCameras(): Promise<DiscoveredCamera[]> {
       const ip = url.hostname;
       const port = parseInt(url.port, 10) || (url.protocol === 'https:' ? 443 : 80);
 
-      const device = new onvif.OnvifDevice({ xaddr });
+      const onvifMod = await getOnvif();
+      const device = onvifMod ? new onvifMod.OnvifDevice({ xaddr }) : null;
 
       let name = port === 554 ? 'Generic RTSP Camera' : 'ONVIF Camera';
       let rtspUrl = process.env.MOCK_STREAM_URL || `rtsp://${url.hostname}:554/live/ch00_0`;
 
-      const initPromise = device.init();
+      const initPromise = device ? device.init() : Promise.reject(new Error('node-onvif not available'));
       initPromise.catch((e: any) => { console.warn('Device init error:', e?.message || e); });
 
       let timeoutId: NodeJS.Timeout;
