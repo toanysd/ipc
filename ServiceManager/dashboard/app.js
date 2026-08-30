@@ -331,6 +331,9 @@ function saveLocalCameraConfig() {
     } catch(e) {}
 }
 
+let lockedCaptures = new Set(JSON.parse(localStorage.getItem('sm_locked_captures') || '[]'));
+let selectedCaptures = new Set();
+
 function renderCaptures() {
     el.captureGrid.innerHTML = '';
     const filter = el.typeFilter ? el.typeFilter.value : 'all';
@@ -339,13 +342,16 @@ function renderCaptures() {
     
     if (filtered.length === 0) {
         el.captureGrid.innerHTML = '<p class="text-muted" style="padding: 20px; grid-column: 1/-1;">Chưa có ảnh/dữ liệu nào. Hãy bấm nút <strong>"Chụp Màn Hình"</strong> hoặc <strong>"Chụp Webcam"</strong> ở trên để chụp ngay!</p>';
+        updateCaptureSelectCount();
         return;
     }
 
     filtered.forEach(cap => {
+        const isLocked = lockedCaptures.has(cap.id);
+        const isSelected = selectedCaptures.has(cap.id);
+        
         const card = document.createElement('div');
-        card.className = 'capture-card';
-        card.onclick = () => openLightbox(cap);
+        card.className = `capture-card ${isLocked ? 'locked' : ''} ${isSelected ? 'selected' : ''}`;
         
         const date = cap.created_at ? new Date(cap.created_at).toLocaleString('vi-VN') : '';
         
@@ -359,14 +365,36 @@ function renderCaptures() {
         }
         
         card.innerHTML = `
+            <input type="checkbox" class="cap-select" ${isSelected ? 'checked' : ''}>
+            ${isLocked ? '<div class="cap-lock-overlay"><i class="fa-solid fa-lock"></i></div>' : ''}
             ${content}
             <div class="capture-meta" style="display: flex; justify-content: space-between; padding: 6px 0; font-size: 11px; color: #64748b;">
                 <span><i class="fa-solid ${getIconForType(cap.type)}"></i> ${cap.type}</span>
                 <span>${date}</span>
             </div>
         `;
+        
+        const cb = card.querySelector('.cap-select');
+        cb.onclick = (e) => {
+            e.stopPropagation();
+            if (cb.checked) selectedCaptures.add(cap.id);
+            else selectedCaptures.delete(cap.id);
+            card.classList.toggle('selected', cb.checked);
+            updateCaptureSelectCount();
+        };
+        
+        card.onclick = () => openLightbox(cap);
+        
         el.captureGrid.appendChild(card);
     });
+    updateCaptureSelectCount();
+}
+
+function updateCaptureSelectCount() {
+    const filter = el.typeFilter ? el.typeFilter.value : 'all';
+    const filtered = captures.filter(c => filter === 'all' || c.type === filter);
+    const countEl = document.getElementById('captureSelectCount');
+    if (countEl) countEl.textContent = `Đã chọn: ${selectedCaptures.size} / Tổng: ${filtered.length}`;
 }
 
 function getIconForType(type) {
@@ -923,22 +951,79 @@ document.getElementById('btnScanWifi')?.addEventListener('click', () => {
     sendDeviceCommand('scan-wifi-devices', { targetSubnets });
 });
 
+const CAMERA_PRESETS = {
+    tapo: {
+        defaultUser: '',
+        defaultPass: '',
+        defaultPort: 554,
+        rtspPathHD: '/stream1',
+        rtspPathSD: '/stream2',
+        hint: '💡 <strong>Camera Tapo:</strong> Mở App Tapo → Cài đặt → Nâng cao → Tài khoản Camera để đặt User & Pass RTSP.',
+        hintColor: '#0284c7',
+        onvifPort: null
+    },
+    icsee: {
+        defaultUser: 'admin',
+        defaultPass: '',
+        defaultPort: 554,
+        rtspPathHD: '/cam/realmonitor?channel=1&subtype=0',
+        rtspPathSD: '/cam/realmonitor?channel=1&subtype=1',
+        hint: '💡 <strong>Camera iCSee / XMEye:</strong> User mặc định "admin". Mật khẩu đặt trong App iCSee. Media Port: 34567, ONVIF: 8899.',
+        hintColor: '#7c3aed',
+        onvifPort: 8899
+    },
+    generic: {
+        defaultUser: 'admin',
+        defaultPass: '',
+        defaultPort: 554,
+        rtspPathHD: '/Streaming/Channels/101',
+        rtspPathSD: '/Streaming/Channels/102', 
+        hint: '💡 <strong>Hikvision/Dahua:</strong> User thường là "admin". Path RTSP phụ thuộc vào model cụ thể.',
+        hintColor: '#0369a1',
+        onvifPort: null
+    },
+    custom: {
+        defaultUser: '',
+        defaultPass: '',
+        defaultPort: 554,
+        rtspPathHD: '/stream1',
+        rtspPathSD: '/stream2',
+        hint: '💡 <strong>Tùy chỉnh:</strong> Nhập đầy đủ thông tin RTSP URL cho camera của bạn.',
+        hintColor: '#64748b',
+        onvifPort: null
+    }
+};
+
 document.getElementById('camBrandSelect')?.addEventListener('change', (e) => {
     const brand = e.target.value;
+    const preset = CAMERA_PRESETS[brand] || CAMERA_PRESETS.custom;
     const portInput = document.getElementById('camPortInput');
     const qualitySelect = document.getElementById('camStreamQuality');
     const tapoHint = document.getElementById('tapoHint');
+    const userInput = document.getElementById('camUserInput');
     
-    if (brand === 'tapo') {
-        if (portInput) portInput.value = 554;
-        if (qualitySelect) qualitySelect.value = '/stream1';
-        if (tapoHint) tapoHint.style.display = 'block';
-    } else if (brand === 'icsee') {
-        if (portInput) portInput.value = 554;
-        if (tapoHint) tapoHint.style.display = 'none';
-    } else {
-        if (tapoHint) tapoHint.style.display = 'none';
+    if (userInput && preset.defaultUser && !userInput.value) {
+        userInput.value = preset.defaultUser;
     }
+    if (portInput) portInput.value = preset.defaultPort;
+    
+    if (qualitySelect) {
+        qualitySelect.innerHTML = `
+            <option value="${preset.rtspPathHD}">Luồng 1 (Siêu Nét Full HD / 2K)</option>
+            <option value="${preset.rtspPathSD}">Luồng 2 (Substream 360p - Mượt khi mạng yếu)</option>
+        `;
+        qualitySelect.value = preset.rtspPathHD;
+    }
+    
+    if (tapoHint) {
+        tapoHint.style.display = 'block';
+        tapoHint.innerHTML = preset.hint;
+        tapoHint.style.color = preset.hintColor;
+        tapoHint.style.borderLeftColor = preset.hintColor;
+        tapoHint.style.backgroundColor = preset.hintColor + '15'; // 15 for some transparency
+    }
+    
+    saveLocalCameraConfig();
 });
 
 document.getElementById('btnActivateCamStream')?.addEventListener('click', () => {
@@ -1032,6 +1117,115 @@ document.getElementById('btnTestRemoteRtsp')?.addEventListener('click', () => {
     openStreamChannel(currentDevice.device_id, 'custom', `Camera RTSP (${currentDevice.device_id})`, input.value);
 });
 
+// --- Remote RTSP Stream Panel Logic ---
+document.getElementById('remoteRtspBrand')?.addEventListener('change', (e) => {
+    const brand = e.target.value;
+    const customDiv = document.getElementById('remoteCustomUrlDiv');
+    const portInput = document.getElementById('remoteRtspPort');
+    
+    if (brand === 'custom') {
+        if (customDiv) customDiv.classList.remove('hidden');
+    } else {
+        if (customDiv) customDiv.classList.add('hidden');
+    }
+    
+    if (portInput && brand !== 'custom') {
+        portInput.value = '10554';
+    }
+});
+
+document.getElementById('btnRemoteRtspStream')?.addEventListener('click', () => {
+    const host = document.getElementById('remoteRtspHost')?.value.trim();
+    const port = document.getElementById('remoteRtspPort')?.value.trim() || '10554';
+    const user = document.getElementById('remoteRtspUser')?.value.trim() || '';
+    const pass = document.getElementById('remoteRtspPass')?.value.trim() || '';
+    const brand = document.getElementById('remoteRtspBrand')?.value;
+    const customUrl = document.getElementById('remoteCustomUrl')?.value.trim();
+    
+    if (brand !== 'custom' && !host) {
+        alert('Vui lòng nhập địa chỉ IP/DDNS từ xa!');
+        return;
+    }
+    
+    if (brand === 'custom' && !customUrl) {
+        alert('Vui lòng nhập RTSP URL đầy đủ!');
+        return;
+    }
+    
+    let rtspUrl = '';
+    if (brand === 'custom') {
+        rtspUrl = customUrl;
+    } else {
+        const preset = CAMERA_PRESETS[brand] || CAMERA_PRESETS.generic;
+        const auth = pass ? `${encodeURIComponent(user)}:${encodeURIComponent(pass)}@` : (user ? `${encodeURIComponent(user)}@` : '');
+        rtspUrl = `rtsp://${auth}${host}:${port}${preset.rtspPathHD}`;
+    }
+    
+    const config = { host, port, user, pass, brand, customUrl };
+    localStorage.setItem('sm_remote_rtsp_config', JSON.stringify(config));
+    
+    if (!currentDevice) {
+        alert('Vui lòng chọn một thiết bị máy khách (Client) từ danh sách bên trái để làm proxy trung chuyển luồng RTSP!');
+        return;
+    }
+    
+    const statusEl = document.getElementById('remoteRtspStatus');
+    if (statusEl) {
+        statusEl.textContent = `Đang kết nối qua ${currentDevice.hostname || currentDevice.device_id}...`;
+        setTimeout(() => statusEl.textContent = '', 3000);
+    }
+    
+    openStreamChannel(currentDevice.device_id, 'custom', 'Remote Camera', rtspUrl);
+});
+
+document.getElementById('btnRemoteRtspTest')?.addEventListener('click', () => {
+    const statusEl = document.getElementById('remoteRtspStatus');
+    if (statusEl) statusEl.textContent = '🔄 Đang kiểm tra...';
+    document.getElementById('btnRemoteRtspStream')?.click();
+});
+
+function loadRemoteRtspConfig() {
+    try {
+        const configStr = localStorage.getItem('sm_remote_rtsp_config');
+        if (!configStr) return;
+        const config = JSON.parse(configStr);
+        if (config.host) {
+            const h = document.getElementById('remoteRtspHost');
+            if (h) h.value = config.host;
+        }
+        if (config.port) {
+            const p = document.getElementById('remoteRtspPort');
+            if (p) p.value = config.port;
+        }
+        if (config.user) {
+            const u = document.getElementById('remoteRtspUser');
+            if (u) u.value = config.user;
+        }
+        if (config.pass) {
+            const ps = document.getElementById('remoteRtspPass');
+            if (ps) ps.value = config.pass;
+        }
+        if (config.brand) {
+            const b = document.getElementById('remoteRtspBrand');
+            if (b) {
+                b.value = config.brand;
+                b.dispatchEvent(new Event('change'));
+            }
+        }
+        if (config.customUrl) {
+            const c = document.getElementById('remoteCustomUrl');
+            if (c) c.value = config.customUrl;
+        }
+    } catch(e) {}
+}
+
+window.addEventListener('DOMContentLoaded', loadRemoteRtspConfig);
+// If DOM is already loaded
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    loadRemoteRtspConfig();
+}
+// ------------------------------------------
+
 // Direct Custom RTSP Player in #view-stream
 document.getElementById('btnPlayCustomRtsp')?.addEventListener('click', () => {
     const input = document.getElementById('customRtspPlayerInput');
@@ -1073,8 +1267,12 @@ const matrixChannels = new Map();
 function updateLiveStreamBadge() {
     const badge = document.getElementById('countLiveStreams');
     if (badge) {
-        badge.textContent = `${matrixChannels.size} Live`;
-        if (matrixChannels.size > 0) {
+        const total = matrixChannels.size;
+        const hiddenCount = [...matrixChannels.values()].filter(c => c.hidden).length;
+        const visibleCount = total - hiddenCount;
+        
+        badge.textContent = hiddenCount > 0 ? `${visibleCount} Live + ${hiddenCount} Ẩn` : `${total} Live`;
+        if (total > 0) {
             badge.classList.remove('hidden');
         } else {
             badge.classList.add('hidden');
@@ -1174,6 +1372,12 @@ async function openStreamChannel(deviceId, type, label = '', customUrl = null) {
     
     const channelKey = `${deviceId}_${type}`;
     if (matrixChannels.has(channelKey)) {
+        const ch = matrixChannels.get(channelKey);
+        // If hidden, show it back
+        if (ch && ch.hidden) {
+            showStreamChannel(channelKey);
+            return;
+        }
         const existingCard = document.getElementById(`card_${channelKey}`);
         if (existingCard) {
             existingCard.style.outline = '3px solid #0D9488';
@@ -1217,7 +1421,8 @@ async function openStreamChannel(deviceId, type, label = '', customUrl = null) {
                 </select>
                 ` : ''}
                 <button onclick="fullscreenCard('${channelKey}')" class="icon-btn" style="color: #cbd5e1; font-size: 13px;" title="Toàn màn hình"><i class="fa-solid fa-expand"></i></button>
-                <button onclick="closeStreamChannel('${channelKey}')" class="icon-btn" style="color: #f87171; font-size: 15px;" title="Đóng luồng này"><i class="fa-solid fa-xmark"></i></button>
+                <button onclick="hideStreamChannel('${channelKey}')" class="icon-btn" style="color: #a78bfa; font-size: 13px;" title="Ẩn luồng (vẫn chạy nền)"><i class="fa-solid fa-eye-slash"></i></button>
+                <button onclick="closeStreamChannel('${channelKey}')" class="icon-btn" style="color: #f87171; font-size: 15px;" title="Đóng & dừng luồng"><i class="fa-solid fa-xmark"></i></button>
             </div>
         </div>
         <div class="stream-card-video-wrapper">
@@ -1505,6 +1710,109 @@ async function switchChannelQuality(channelKey, newQuality) {
         openStreamChannel(ch.deviceId, ch.type, ch.label, ch.customUrl);
     }, 300);
 }
+
+// ─── Hide / Show Stream Channel (keep stream running in background) ─────────
+
+function hideStreamChannel(channelKey) {
+    const ch = matrixChannels.get(channelKey);
+    const card = document.getElementById(`card_${channelKey}`);
+    if (!ch || !card) return;
+    
+    ch.hidden = true;
+    card.style.display = 'none';
+    updateHiddenStreamBadge();
+    updateLiveStreamBadge();
+    
+    // Show placeholder if all visible cards are hidden
+    const visibleCards = [...matrixChannels.values()].filter(c => !c.hidden);
+    if (visibleCards.length === 0) {
+        const placeholder = document.getElementById('emptyMatrixPlaceholder');
+        if (placeholder) placeholder.style.display = 'block';
+    }
+}
+
+function showStreamChannel(channelKey) {
+    const ch = matrixChannels.get(channelKey);
+    const card = document.getElementById(`card_${channelKey}`);
+    if (!ch || !card) return;
+    
+    ch.hidden = false;
+    card.style.display = '';
+    
+    const placeholder = document.getElementById('emptyMatrixPlaceholder');
+    if (placeholder) placeholder.style.display = 'none';
+    
+    updateHiddenStreamBadge();
+    updateLiveStreamBadge();
+    
+    // Flash highlight to draw attention
+    card.style.outline = '3px solid #7c3aed';
+    setTimeout(() => { card.style.outline = 'none'; }, 2000);
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function showAllHiddenStreams() {
+    let count = 0;
+    for (const [key, ch] of matrixChannels) {
+        if (ch.hidden) {
+            ch.hidden = false;
+            const card = document.getElementById(`card_${key}`);
+            if (card) card.style.display = '';
+            count++;
+        }
+    }
+    
+    if (count > 0) {
+        const placeholder = document.getElementById('emptyMatrixPlaceholder');
+        if (placeholder) placeholder.style.display = 'none';
+    }
+    
+    updateHiddenStreamBadge();
+    updateLiveStreamBadge();
+}
+
+function updateHiddenStreamBadge() {
+    const btn = document.getElementById('btnShowHiddenStreams');
+    const countEl = document.getElementById('hiddenStreamCount');
+    const hiddenCount = [...matrixChannels.values()].filter(c => c.hidden).length;
+    
+    if (countEl) countEl.textContent = hiddenCount;
+    
+    if (btn) {
+        if (hiddenCount > 0) {
+            btn.classList.remove('hidden');
+            btn.style.background = '#ede9fe';
+        } else {
+            btn.classList.add('hidden');
+        }
+    }
+}
+
+// Show Hidden Streams button handler
+document.getElementById('btnShowHiddenStreams')?.addEventListener('click', () => {
+    const hidden = [...matrixChannels.entries()].filter(([, ch]) => ch.hidden);
+    
+    if (hidden.length === 0) return;
+    
+    if (hidden.length === 1) {
+        showStreamChannel(hidden[0][0]);
+        return;
+    }
+    
+    // Build mini popup list of hidden streams
+    const names = hidden.map(([key, ch]) => `• ${ch.label || ch.deviceId} (${ch.type.toUpperCase()})`).join('\n');
+    const choice = confirm(`Có ${hidden.length} luồng đang ẩn:\n${names}\n\nBấm OK để hiện tất cả, hoặc Cancel để chọn từng luồng.`);
+    
+    if (choice) {
+        showAllHiddenStreams();
+    } else {
+        // Show one by one via prompts
+        for (const [key, ch] of hidden) {
+            const show = confirm(`Hiện lại luồng: ${ch.label || ch.deviceId} (${ch.type.toUpperCase()})?`);
+            if (show) showStreamChannel(key);
+        }
+    }
+});
 
 // Close Stream Channel
 function closeStreamChannel(channelKey) {
@@ -1928,3 +2236,256 @@ if (sessionStorage.getItem('sm_token')) {
     el.appContainer.classList.remove('hidden');
     initApp();
 }
+
+// --- MEDIA GALLERY ENHANCEMENTS ---
+
+async function hashPassword(pwd) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(pwd);
+    const hash = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyMediaPassword(actionDesc) {
+    let savedHash = localStorage.getItem('sm_media_password_hash');
+    if (!savedHash) {
+        const setPwd = prompt('Đặt mật khẩu cấp 2 cho Media:');
+        if (!setPwd) return false;
+        savedHash = await hashPassword(setPwd);
+        localStorage.setItem('sm_media_password_hash', savedHash);
+        alert('Đã đặt mật khẩu cấp 2 thành công!');
+        return true;
+    }
+    const input = prompt(`Nhập mật khẩu cấp 2 để ${actionDesc}:`);
+    if (!input) return false;
+    const inputHash = await hashPassword(input);
+    if (inputHash === savedHash) {
+        return true;
+    } else {
+        alert('Mật khẩu cấp 2 không đúng!');
+        return false;
+    }
+}
+
+document.getElementById('btnChangeMediaPassword')?.addEventListener('click', async () => {
+    let savedHash = localStorage.getItem('sm_media_password_hash');
+    if (savedHash) {
+        const oldPwd = prompt('Nhập mật khẩu cấp 2 hiện tại:');
+        if (!oldPwd) return;
+        const oldHash = await hashPassword(oldPwd);
+        if (oldHash !== savedHash) {
+            alert('Mật khẩu không đúng!');
+            return;
+        }
+    }
+    const newPwd = prompt('Nhập mật khẩu cấp 2 MỚI:');
+    if (!newPwd) return;
+    savedHash = await hashPassword(newPwd);
+    localStorage.setItem('sm_media_password_hash', savedHash);
+    alert('Đã đổi mật khẩu cấp 2 thành công!');
+});
+
+document.getElementById('selectAllCaptures')?.addEventListener('change', (e) => {
+    const filter = el.typeFilter ? el.typeFilter.value : 'all';
+    const filtered = captures.filter(c => filter === 'all' || c.type === filter);
+    
+    if (e.target.checked) {
+        filtered.forEach(c => selectedCaptures.add(c.id));
+    } else {
+        selectedCaptures.clear();
+    }
+    renderCaptures();
+});
+
+document.getElementById('btnLockSelected')?.addEventListener('click', () => {
+    if (selectedCaptures.size === 0) {
+        alert('Chưa chọn mục nào!');
+        return;
+    }
+    selectedCaptures.forEach(id => {
+        if (lockedCaptures.has(id)) lockedCaptures.delete(id);
+        else lockedCaptures.add(id);
+    });
+    localStorage.setItem('sm_locked_captures', JSON.stringify(Array.from(lockedCaptures)));
+    selectedCaptures.clear();
+    const selectAll = document.getElementById('selectAllCaptures');
+    if (selectAll) selectAll.checked = false;
+    renderCaptures();
+});
+
+document.getElementById('btnDeleteSelected')?.addEventListener('click', async () => {
+    if (selectedCaptures.size === 0) {
+        alert('Chưa chọn mục nào!');
+        return;
+    }
+    
+    const toDelete = Array.from(selectedCaptures).filter(id => !lockedCaptures.has(id));
+    const lockedCount = selectedCaptures.size - toDelete.length;
+    
+    if (toDelete.length === 0) {
+        alert('Tất cả các mục đã chọn đều đang bị khóa!');
+        return;
+    }
+    
+    let msg = `Bạn có chắc muốn xóa ${toDelete.length} mục đã chọn?`;
+    if (lockedCount > 0) msg += `\n(Bỏ qua ${lockedCount} mục bị khóa)`;
+    
+    if (!confirm(msg)) return;
+    
+    if (!(await verifyMediaPassword('xóa dữ liệu'))) return;
+    
+    try {
+        const idList = toDelete.map(id => `"${id}"`).join(',');
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sm_captures?id=in.(${idList})`, {
+            method: 'DELETE',
+            headers
+        });
+        
+        if (res.ok) {
+            alert('Đã xóa thành công!');
+            selectedCaptures.clear();
+            const selectAll = document.getElementById('selectAllCaptures');
+            if (selectAll) selectAll.checked = false;
+            fetchCaptures();
+        } else {
+            alert('Lỗi khi xóa!');
+        }
+    } catch (e) {
+        console.error('Delete error', e);
+        alert('Lỗi kết nối khi xóa!');
+    }
+});
+
+document.getElementById('btnDeleteAll')?.addEventListener('click', async () => {
+    const filter = el.typeFilter ? el.typeFilter.value : 'all';
+    const filtered = captures.filter(c => filter === 'all' || c.type === filter);
+    
+    const toDelete = filtered.filter(c => !lockedCaptures.has(c.id));
+    const lockedCount = filtered.length - toDelete.length;
+    
+    if (toDelete.length === 0) {
+        alert('Không có mục nào để xóa hoặc tất cả đều bị khóa!');
+        return;
+    }
+    
+    let msg = `Bạn có chắc muốn xóa TẤT CẢ ${toDelete.length} mục hiển thị?`;
+    if (lockedCount > 0) msg += `\n(Bỏ qua ${lockedCount} mục bị khóa)`;
+    
+    if (!confirm(msg)) return;
+    
+    if (!(await verifyMediaPassword('xóa tất cả dữ liệu'))) return;
+    
+    try {
+        const idList = toDelete.map(c => `"${c.id}"`).join(',');
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sm_captures?id=in.(${idList})`, {
+            method: 'DELETE',
+            headers
+        });
+        
+        if (res.ok) {
+            alert('Đã xóa tất cả thành công!');
+            selectedCaptures.clear();
+            const selectAll = document.getElementById('selectAllCaptures');
+            if (selectAll) selectAll.checked = false;
+            fetchCaptures();
+        } else {
+            alert('Lỗi khi xóa!');
+        }
+    } catch (e) {
+        console.error('Delete error', e);
+        alert('Lỗi kết nối khi xóa!');
+    }
+});
+
+// Lightbox variables
+let currentLightboxCap = null;
+
+const origOpenLightbox = openLightbox;
+window.openLightbox = function(cap) {
+    currentLightboxCap = cap;
+    origOpenLightbox(cap);
+    updateLightboxLockState();
+};
+
+function updateLightboxLockState() {
+    const btnLock = document.getElementById('lightboxLock');
+    if (!btnLock || !currentLightboxCap) return;
+    if (lockedCaptures.has(currentLightboxCap.id)) {
+        btnLock.innerHTML = '🔓 Mở Khóa';
+    } else {
+        btnLock.innerHTML = '🔒 Khóa';
+    }
+}
+
+document.getElementById('lightboxLock')?.addEventListener('click', () => {
+    if (!currentLightboxCap) return;
+    if (lockedCaptures.has(currentLightboxCap.id)) {
+        lockedCaptures.delete(currentLightboxCap.id);
+    } else {
+        lockedCaptures.add(currentLightboxCap.id);
+    }
+    localStorage.setItem('sm_locked_captures', JSON.stringify(Array.from(lockedCaptures)));
+    updateLightboxLockState();
+    renderCaptures();
+});
+
+document.getElementById('lightboxDelete')?.addEventListener('click', async () => {
+    if (!currentLightboxCap) return;
+    if (lockedCaptures.has(currentLightboxCap.id)) {
+        alert('Mục này đang bị khóa, không thể xóa!');
+        return;
+    }
+    if (!confirm('Bạn có chắc muốn xóa mục này?')) return;
+    
+    if (!(await verifyMediaPassword('xóa mục này'))) return;
+    
+    try {
+        const res = await fetch(`${SUPABASE_URL}/rest/v1/sm_captures?id=eq.${currentLightboxCap.id}`, {
+            method: 'DELETE',
+            headers
+        });
+        if (res.ok) {
+            el.lightbox.classList.add('hidden');
+            fetchCaptures();
+        } else {
+            alert('Lỗi khi xóa!');
+        }
+    } catch (e) {
+        alert('Lỗi kết nối khi xóa!');
+    }
+});
+
+document.getElementById('lightboxDownload')?.addEventListener('click', () => {
+    if (!currentLightboxCap) return;
+    
+    if (currentLightboxCap.type === 'clipboard') {
+        const txt = (currentLightboxCap.metadata && currentLightboxCap.metadata.text) || currentLightboxCap.storage_path;
+        const blob = new Blob([txt], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `Clipboard_${currentLightboxCap.id}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } else {
+        const imgSrc = currentLightboxCap.thumbnail || (currentLightboxCap.storage_path && currentLightboxCap.storage_path.startsWith('http') ? currentLightboxCap.storage_path : `${SUPABASE_URL}/storage/v1/object/public/sm-captures/${currentLightboxCap.storage_path}`);
+        fetch(imgSrc)
+            .then(res => res.blob())
+            .then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `Capture_${currentLightboxCap.id}.jpg`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            })
+            .catch(err => {
+                console.error(err);
+                alert('Không thể tải về. Vui lòng chuột phải vào ảnh và chọn Save image as...');
+            });
+    }
+});

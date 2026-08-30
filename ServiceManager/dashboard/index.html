@@ -91,6 +91,18 @@
                             <option value="clipboard">Bộ Nhớ Tạm (Clipboard)</option>
                         </select>
                     </div>
+                    <div class="gallery-toolbar">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="selectAllCaptures">
+                            <label for="selectAllCaptures">Chọn Tất Cả</label>
+                            <span id="captureSelectCount" style="margin-left: 10px; font-weight: 600;">Đã chọn: 0 / Tổng: 0</span>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button id="btnLockSelected" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;"><i class="fa-solid fa-lock"></i> Khóa/Mở Khóa Đã Chọn</button>
+                            <button id="btnDeleteSelected" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #dc2626;"><i class="fa-solid fa-trash"></i> Xóa Đã Chọn</button>
+                            <button id="btnDeleteAll" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #dc2626;"><i class="fa-solid fa-trash-can"></i> Xóa Tất Cả</button>
+                        </div>
+                    </div>
                     <div id="captureGrid" class="capture-grid">
                         <!-- Thumbnails here -->
                     </div>
@@ -198,6 +210,60 @@
 
                                 <button id="btnActivateCamStream" class="btn-primary" style="margin-top: 5px; padding: 10px; font-size: 14px; cursor: pointer;"><i class="fa-solid fa-play"></i> Kích Hoạt Luồng & Xem Ngay</button>
                                 <div id="camStreamStatus" style="font-size: 12px; color: #0D9488; font-weight: 500;"></div>
+                            </div>
+                        </div>
+
+                        <!-- Remote RTSP Stream Panel -->
+                        <div class="settings-card" style="margin-top: 15px; border: 2px dashed #7c3aed; background: #faf5ff;">
+                            <h3 style="margin-bottom: 15px; color: #0f172a; font-size: 16px; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px;">
+                                <i class="fa-solid fa-globe" style="color: #7c3aed;"></i> Xem Camera Từ Xa (Remote RTSP)
+                            </h3>
+                            <p style="font-size: 12px; color: #6b7280; margin-bottom: 12px;">
+                                Kết nối trực tiếp đến Camera IP qua địa chỉ IP công khai hoặc DDNS. 
+                                Cần mở cổng RTSP trên Router nhà (hoặc dùng UPnP đã cấu hình).
+                            </p>
+                            
+                            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b;">Địa chỉ từ xa (IP/DDNS):</label>
+                                    <input type="text" id="remoteRtspHost" placeholder="Ví dụ: 219.104.132.28 hoặc myhouse.ddns.net" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">Cổng:</label>
+                                        <input type="number" id="remoteRtspPort" value="10554" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                    </div>
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">User:</label>
+                                        <input type="text" id="remoteRtspUser" placeholder="admin" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                    </div>
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">Pass:</label>
+                                        <input type="password" id="remoteRtspPass" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b;">Hãng Camera:</label>
+                                    <select id="remoteRtspBrand" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 13px;">
+                                        <option value="icsee">iCSee / XMEye</option>
+                                        <option value="tapo">TP-Link Tapo</option>
+                                        <option value="generic">Hikvision / Dahua</option>
+                                        <option value="custom">Tùy chỉnh URL</option>
+                                    </select>
+                                </div>
+                                <div id="remoteCustomUrlDiv" class="hidden" style="margin-top: 10px;">
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b;">RTSP URL đầy đủ:</label>
+                                    <input type="text" id="remoteCustomUrl" placeholder="rtsp://user:pass@host:port/path" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                </div>
+                                <div style="display: flex; gap: 10px; margin-top: 5px;">
+                                    <button id="btnRemoteRtspStream" class="btn-primary" style="flex: 1; padding: 10px; background: #7c3aed;">
+                                        <i class="fa-solid fa-satellite-dish"></i> Kết Nối & Xem Từ Xa
+                                    </button>
+                                    <button id="btnRemoteRtspTest" class="btn-secondary" style="padding: 10px;">
+                                        <i class="fa-solid fa-stethoscope"></i> Kiểm Tra Kết Nối
+                                    </button>
+                                </div>
+                                <div id="remoteRtspStatus" style="font-size: 12px; color: #7c3aed; font-weight: 500;"></div>
                             </div>
                         </div>
 
@@ -414,6 +480,7 @@
                         </div>
 
                         <button id="saveSettingsBtn" class="btn-primary mt-20" style="padding: 10px 20px; font-size: 14px;"><i class="fa-solid fa-floppy-disk"></i> Lưu Cấu Hình Thiết Bị</button>
+                        <button id="btnChangeMediaPassword" class="btn-secondary mt-20" style="padding: 10px 20px; font-size: 14px;"><i class="fa-solid fa-key"></i> Đổi Mật Khẩu Media Cấp 2</button>
                     </div>
                 </section>
 
@@ -434,6 +501,7 @@
                             <button id="btnOpenAddStreamModal" class="btn-primary" style="font-size: 13px; padding: 7px 14px; background: #0D9488; cursor: pointer;"><i class="fa-solid fa-plus"></i> Mở Luồng Mới</button>
                             <button id="btnSnapAllStreams" class="btn-secondary" style="font-size: 13px; padding: 7px 12px; cursor: pointer;"><i class="fa-solid fa-camera-retro"></i> Chụp Tất Cả</button>
                             <button id="btnStopAllMatrixStreams" class="btn-secondary" style="font-size: 13px; padding: 7px 12px; color: #dc2626; border-color: #fca5a5; cursor: pointer;"><i class="fa-solid fa-power-off"></i> Dừng Tất Cả</button>
+                            <button id="btnShowHiddenStreams" class="btn-secondary hidden" style="font-size: 13px; padding: 7px 12px; color: #7c3aed; border-color: #c4b5fd; cursor: pointer;"><i class="fa-solid fa-eye"></i> Hiện Ẩn (<span id="hiddenStreamCount">0</span>)</button>
                             <button id="btnFullscreenMatrix" class="btn-secondary" style="font-size: 13px; padding: 7px 12px; cursor: pointer;"><i class="fa-solid fa-expand"></i> Toàn Màn Hình</button>
                         </div>
                     </div>
@@ -504,6 +572,11 @@
         <img id="lightboxImg" src="" alt="Full size">
         <div id="lightboxText" class="lightbox-text hidden"></div>
         <div id="lightboxCaption" class="lightbox-caption"></div>
+        <div class="lightbox-toolbar">
+            <button id="lightboxLock" class="btn-secondary">🔒 Khóa</button>
+            <button id="lightboxDownload" class="btn-secondary">💾 Tải về</button>
+            <button id="lightboxDelete" class="btn-primary" style="background-color: var(--danger);">🗑️ Xóa</button>
+        </div>
     </div>
 
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
