@@ -1533,6 +1533,7 @@ async function openStreamChannel(deviceId, type, label = '', customUrl = null) {
     if (type === 'screen') { typeName = 'Màn Hình'; icon = 'fa-desktop'; }
     else if (type === 'ipcam') { typeName = 'Camera IP'; icon = 'fa-video'; }
     else if (type === 'custom') { typeName = 'RTSP Tùy Chọn'; icon = 'fa-play'; }
+    else if (type.startsWith('prof_')) { typeName = 'Danh Bạ'; icon = 'fa-address-book'; }
     
     const card = document.createElement('div');
     card.id = `card_${channelKey}`;
@@ -1541,7 +1542,7 @@ async function openStreamChannel(deviceId, type, label = '', customUrl = null) {
     // Check saved quality preference
     const savedCam = JSON.parse(localStorage.getItem('sm_camera_' + deviceId) || '{}');
     const currentQuality = localStorage.getItem('sm_default_stream_quality') || savedCam.quality || '/stream1';
-    const isQualitySelectable = (type === 'ipcam' || type === 'custom');
+    const isQualitySelectable = (type === 'ipcam' || type === 'custom' || type.startsWith('prof_'));
     
     card.innerHTML = `
         <div class="stream-card-header">
@@ -1682,7 +1683,7 @@ async function openStreamChannel(deviceId, type, label = '', customUrl = null) {
             console.error(`Stream init error:`, e);
             if (statusOverlay) statusOverlay.textContent = 'Lỗi khởi tạo';
         }
-    } else if (type === 'ipcam' || type === 'custom') {
+    } else if (type === 'ipcam' || type === 'custom' || type.startsWith('prof_')) {
         try {
             const pc = new RTCPeerConnection({
                 iceServers: [
@@ -2092,7 +2093,7 @@ async function snapStreamChannel(channelKey) {
                 headers,
                 body: JSON.stringify({
                     device_id: ch.deviceId,
-                    type: (ch.type === 'ipcam' || ch.type === 'custom') ? 'camera' : (ch.type === 'screen' ? 'screenshot' : 'webcam'),
+                    type: (ch.type === 'ipcam' || ch.type === 'custom' || ch.type.startsWith('prof_')) ? 'camera' : (ch.type === 'screen' ? 'screenshot' : 'webcam'),
                     storage_path: `${ch.deviceId}/snap_${ch.type}_${Date.now()}.jpg`,
                     thumbnail: thumbDataUrl,
                     metadata: { resolution: `${width}x${height}`, source: `matrix_${ch.type}` }
@@ -2888,9 +2889,10 @@ function connectCamProfile(id, mode) {
     if (camPass) camPass.value = prof.pass;
     if (camBrand) camBrand.value = prof.brand;
 
-    // Open stream channel using the custom RTSP URL
+    // Use profile-specific type so each camera gets its own unique stream channel
+    const streamType = `prof_${id}`;
     const streamLabel = `${prof.name} (${mode === 'local' ? 'LAN' : 'WAN'})`;
-    openStreamChannel(currentDevice.device_id, 'custom', streamLabel, rtspUrl);
+    openStreamChannel(currentDevice.device_id, streamType, streamLabel, rtspUrl);
 }
 
 // Event listeners for modal
