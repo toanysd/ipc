@@ -574,8 +574,12 @@ function renderUpnpMappings(mappings) {
     if (!tbody) return;
     tbody.innerHTML = '';
     
+    // Track mappings for preset status sync
+    if (mappings) currentUpnpMappings = mappings;
+    
     if (!mappings || mappings.length === 0) {
         tbody.innerHTML = '<tr><td colspan="6" style="padding: 15px; text-align: center; color: #94a3b8;">Chưa có cổng nào được mở trên Router.</td></tr>';
+        updatePresetStatuses();
         return;
     }
     
@@ -594,6 +598,8 @@ function renderUpnpMappings(mappings) {
         `;
         tbody.appendChild(tr);
     });
+    
+    updatePresetStatuses();
 }
 
 // Render Auto-Network Discovery Status
@@ -882,9 +888,140 @@ function selectPortForwardTarget(ip) {
     pubPortInput?.focus();
 }
 
+// ─── UPnP Preset Port Configs ───────────────────────────────────────────────
+const UPNP_PRESETS = {
+    cam_rtsp: {
+        publicPort: 10554,
+        privatePort: 554,
+        targetIp: 'auto', // Will use detected camera IP
+        description: 'Camera RTSP (Auto)',
+        statusBadge: 'presetCamRtspStatus',
+        button: 'btnPresetCamRtsp',
+        card: 'presetCamRtsp',
+        color: '#0D9488'
+    },
+    sm_api: {
+        publicPort: 1984,
+        privatePort: 1984,
+        targetIp: '127.0.0.1',
+        description: 'Service Manager API',
+        statusBadge: 'presetSmApiStatus',
+        button: 'btnPresetSmApi',
+        card: 'presetSmApi',
+        color: '#2563eb'
+    },
+    sm_webrtc: {
+        publicPort: 8555,
+        privatePort: 8555,
+        targetIp: '127.0.0.1',
+        description: 'Service Manager WebRTC',
+        statusBadge: 'presetSmWebrtcStatus',
+        button: 'btnPresetSmWebrtc',
+        card: 'presetSmWebrtc',
+        color: '#7c3aed'
+    }
+};
+
+let currentUpnpMappings = []; // Track current open ports
+
+function updatePresetStatuses() {
+    const openPorts = new Set(currentUpnpMappings.map(m => m.publicPort));
+    
+    for (const [key, preset] of Object.entries(UPNP_PRESETS)) {
+        const badge = document.getElementById(preset.statusBadge);
+        const btn = document.getElementById(preset.button);
+        const card = document.getElementById(preset.card);
+        const isOpen = openPorts.has(preset.publicPort);
+        
+        if (badge) {
+            if (isOpen) {
+                badge.textContent = 'Đang Mở';
+                badge.style.background = '#dcfce7';
+                badge.style.color = '#16a34a';
+            } else {
+                badge.textContent = 'Đóng';
+                badge.style.background = '#fee2e2';
+                badge.style.color = '#dc2626';
+            }
+        }
+        
+        if (btn) {
+            if (isOpen) {
+                btn.innerHTML = `<i class="fa-solid fa-door-closed"></i> Đóng Cổng`;
+                btn.style.background = '#dc2626';
+            } else {
+                btn.innerHTML = `<i class="fa-solid fa-door-open"></i> Mở Cổng`;
+                btn.style.background = preset.color;
+            }
+        }
+        
+        if (card) {
+            card.style.borderColor = isOpen ? '#86efac' : '#e2e8f0';
+            card.style.background = isOpen ? '#f0fdf4' : '#f8fafc';
+        }
+    }
+}
+
+function togglePresetPort(presetKey) {
+    const preset = UPNP_PRESETS[presetKey];
+    if (!preset) return;
+    
+    if (!currentDevice) {
+        alert('Vui lòng chọn thiết bị máy khách trước!');
+        return;
+    }
+    
+    const isOpen = currentUpnpMappings.some(m => m.publicPort === preset.publicPort);
+    
+    if (isOpen) {
+        // Close the port
+        if (confirm(`Đóng cổng ${preset.publicPort} (${preset.description})?`)) {
+            sendDeviceCommand('close-port', { publicPort: preset.publicPort });
+            // Optimistic UI update
+            currentUpnpMappings = currentUpnpMappings.filter(m => m.publicPort !== preset.publicPort);
+            updatePresetStatuses();
+            renderUpnpMappings(currentUpnpMappings);
+        }
+    } else {
+        // Open the port
+        let targetIp = preset.targetIp;
+        if (targetIp === 'auto') {
+            // Use detected camera IP or manual input
+            targetIp = document.getElementById('upnpTargetIp')?.value || document.getElementById('camIpInput')?.value || '';
+            if (!targetIp) {
+                alert('Chưa phát hiện được IP Camera. Hãy quét thiết bị trước hoặc nhập IP Camera ở mục cấu hình phía trên.');
+                return;
+            }
+        }
+        
+        const btn = document.getElementById(preset.button);
+        if (btn) {
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Đang mở...`;
+            btn.disabled = true;
+        }
+        
+        sendDeviceCommand('open-port', {
+            targetIp,
+            privatePort: preset.privatePort,
+            publicPort: preset.publicPort,
+            description: preset.description
+        });
+        
+        // Re-enable after 5 seconds
+        setTimeout(() => {
+            if (btn) btn.disabled = false;
+            sendDeviceCommand('get-network-info');
+        }, 5000);
+    }
+}
+
 function closePortMapping(publicPort) {
     if (confirm(`Bạn có chắc chắn muốn đóng cổng ngoài ${publicPort} trên Router không?`)) {
         sendDeviceCommand('close-port', { publicPort });
+        // Update local tracking
+        currentUpnpMappings = currentUpnpMappings.filter(m => m.publicPort !== publicPort);
+        updatePresetStatuses();
+        renderUpnpMappings(currentUpnpMappings);
     }
 }
 
@@ -2518,3 +2655,249 @@ document.getElementById('lightboxDownload')?.addEventListener('click', () => {
             });
     }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── CAMERA PROFILES MANAGER ────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const BRAND_INFO = {
+    icsee:   { label: 'iCSee / XMEye',        icon: 'fa-video',         color: '#7c3aed', rtspHD: '/cam/realmonitor?channel=1&subtype=0', rtspSD: '/cam/realmonitor?channel=1&subtype=1' },
+    tapo:    { label: 'TP-Link Tapo',          icon: 'fa-camera',        color: '#0D9488', rtspHD: '/stream1', rtspSD: '/stream2' },
+    generic: { label: 'Hikvision / Dahua',     icon: 'fa-video',         color: '#0369a1', rtspHD: '/Streaming/Channels/101', rtspSD: '/Streaming/Channels/102' },
+    custom:  { label: 'Tùy chỉnh RTSP',       icon: 'fa-play',          color: '#64748b', rtspHD: '/stream1', rtspSD: '/stream2' }
+};
+
+// Default profiles pre-populated with user's cameras
+const DEFAULT_PROFILES = [
+    {
+        id: 'prof_icsee_home',
+        name: '📹 Camera Nhà (iCSee)',
+        brand: 'icsee',
+        localIp: '192.168.11.19',
+        port: 554,
+        remoteHost: '',
+        remotePort: 10554,
+        user: 'admin',
+        pass: '',
+        notes: 'WiFi nhà Buffalo-G-3670 · Subnet 192.168.11.x · ONVIF:8899 · Media:34567'
+    },
+    {
+        id: 'prof_tapo_office',
+        name: '📹 Camera Văn Phòng (Tapo)',
+        brand: 'tapo',
+        localIp: '192.168.1.6',
+        port: 554,
+        remoteHost: '',
+        remotePort: 10554,
+        user: 'toanysd',
+        pass: '',
+        notes: 'Mạng văn phòng · Subnet 192.168.1.x · Ports: 554, 2020'
+    }
+];
+
+let camProfiles = [];
+let editingProfileId = null;
+
+function loadCamProfiles() {
+    const saved = localStorage.getItem('sm_camera_profiles');
+    if (saved) {
+        try {
+            camProfiles = JSON.parse(saved);
+        } catch(e) {
+            camProfiles = [...DEFAULT_PROFILES];
+        }
+    } else {
+        // First time: use defaults
+        camProfiles = [...DEFAULT_PROFILES];
+        saveCamProfiles();
+    }
+    renderCamProfiles();
+}
+
+function saveCamProfiles() {
+    localStorage.setItem('sm_camera_profiles', JSON.stringify(camProfiles));
+}
+
+function renderCamProfiles() {
+    const grid = document.getElementById('camProfileGrid');
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    if (camProfiles.length === 0) {
+        grid.innerHTML = `
+            <div style="padding: 30px; text-align: center; color: #94a3b8; font-size: 13px; grid-column: 1/-1; background: #f8fafc; border-radius: 8px; border: 2px dashed #e2e8f0;">
+                <div style="font-size: 32px; margin-bottom: 8px; opacity: 0.5;">📷</div>
+                <p style="margin: 0;">Chưa có camera nào trong danh bạ. Bấm <strong>"Thêm Camera"</strong> để bắt đầu.</p>
+            </div>`;
+        return;
+    }
+
+    camProfiles.forEach(prof => {
+        const brandInfo = BRAND_INFO[prof.brand] || BRAND_INFO.custom;
+        const hasRemote = prof.remoteHost && prof.remoteHost.trim();
+        const hasLocal = prof.localIp && prof.localIp.trim();
+
+        const card = document.createElement('div');
+        card.className = 'cam-profile-card';
+        card.style.cssText = `background: #ffffff; border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px; transition: all 0.2s; position: relative;`;
+        card.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px;">
+                <div style="flex: 1; overflow: hidden;">
+                    <div style="font-size: 14px; font-weight: 700; color: #0f172a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHTML(prof.name)}</div>
+                    <div style="display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap;">
+                        <span class="badge" style="background: ${brandInfo.color}22; color: ${brandInfo.color}; font-size: 10px; padding: 2px 6px;"><i class="fa-solid ${brandInfo.icon}"></i> ${brandInfo.label}</span>
+                        ${hasLocal ? `<span class="badge" style="background: #dcfce7; color: #16a34a; font-size: 10px; padding: 2px 6px;"><i class="fa-solid fa-wifi"></i> LAN</span>` : ''}
+                        ${hasRemote ? `<span class="badge" style="background: #ede9fe; color: #7c3aed; font-size: 10px; padding: 2px 6px;"><i class="fa-solid fa-globe"></i> WAN</span>` : ''}
+                    </div>
+                </div>
+                <div style="display: flex; gap: 4px;">
+                    <button onclick="editCamProfile('${prof.id}')" class="icon-btn" style="color: #64748b; font-size: 12px;" title="Sửa"><i class="fa-solid fa-pen"></i></button>
+                    <button onclick="deleteCamProfile('${prof.id}')" class="icon-btn" style="color: #f87171; font-size: 12px;" title="Xóa"><i class="fa-solid fa-trash"></i></button>
+                </div>
+            </div>
+            <div style="font-size: 11px; color: #64748b; margin-bottom: 10px; line-height: 1.6;">
+                ${hasLocal ? `<div><i class="fa-solid fa-network-wired" style="width: 14px; color: #16a34a;"></i> <strong>LAN:</strong> <code style="background: #f1f5f9; padding: 1px 5px; border-radius: 3px;">${escapeHTML(prof.localIp)}:${prof.port}</code></div>` : ''}
+                ${hasRemote ? `<div><i class="fa-solid fa-globe" style="width: 14px; color: #7c3aed;"></i> <strong>WAN:</strong> <code style="background: #f1f5f9; padding: 1px 5px; border-radius: 3px;">${escapeHTML(prof.remoteHost)}:${prof.remotePort}</code></div>` : ''}
+                <div><i class="fa-solid fa-user" style="width: 14px; color: #94a3b8;"></i> ${escapeHTML(prof.user || '(chưa đặt)')}</div>
+                ${prof.notes ? `<div style="margin-top: 2px; color: #94a3b8; font-style: italic;"><i class="fa-solid fa-sticky-note" style="width: 14px;"></i> ${escapeHTML(prof.notes)}</div>` : ''}
+            </div>
+            <div style="display: flex; gap: 6px;">
+                ${hasLocal ? `<button onclick="connectCamProfile('${prof.id}', 'local')" class="btn-primary" style="flex: 1; padding: 6px 10px; font-size: 11px; background: #0D9488; cursor: pointer;"><i class="fa-solid fa-play"></i> Kết Nối LAN</button>` : ''}
+                ${hasRemote ? `<button onclick="connectCamProfile('${prof.id}', 'remote')" class="btn-primary" style="flex: 1; padding: 6px 10px; font-size: 11px; background: #7c3aed; cursor: pointer;"><i class="fa-solid fa-satellite-dish"></i> Kết Nối Từ Xa</button>` : ''}
+                ${!hasLocal && !hasRemote ? `<button disabled class="btn-secondary" style="flex: 1; padding: 6px 10px; font-size: 11px; opacity: 0.5;">Chưa có IP — Bấm sửa để thêm</button>` : ''}
+            </div>
+        `;
+        grid.appendChild(card);
+    });
+}
+
+function openCamProfileModal(editId = null) {
+    editingProfileId = editId;
+    const modal = document.getElementById('modalCamProfile');
+    const title = document.getElementById('modalCamProfileTitle');
+    if (!modal) return;
+
+    // Reset form
+    document.getElementById('profName').value = '';
+    document.getElementById('profBrand').value = 'icsee';
+    document.getElementById('profPort').value = '554';
+    document.getElementById('profLocalIp').value = '';
+    document.getElementById('profRemoteHost').value = '';
+    document.getElementById('profRemotePort').value = '10554';
+    document.getElementById('profUser').value = 'admin';
+    document.getElementById('profPass').value = '';
+    document.getElementById('profNotes').value = '';
+
+    if (editId) {
+        const prof = camProfiles.find(p => p.id === editId);
+        if (prof) {
+            title.innerHTML = '<i class="fa-solid fa-pen" style="color: #7c3aed;"></i> Chỉnh Sửa Camera';
+            document.getElementById('profName').value = prof.name || '';
+            document.getElementById('profBrand').value = prof.brand || 'icsee';
+            document.getElementById('profPort').value = prof.port || 554;
+            document.getElementById('profLocalIp').value = prof.localIp || '';
+            document.getElementById('profRemoteHost').value = prof.remoteHost || '';
+            document.getElementById('profRemotePort').value = prof.remotePort || 10554;
+            document.getElementById('profUser').value = prof.user || '';
+            document.getElementById('profPass').value = prof.pass || '';
+            document.getElementById('profNotes').value = prof.notes || '';
+        }
+    } else {
+        title.innerHTML = '<i class="fa-solid fa-camera" style="color: #7c3aed;"></i> Thêm Camera Mới';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+function saveCamProfileFromModal() {
+    const name = document.getElementById('profName').value.trim();
+    if (!name) {
+        alert('Vui lòng nhập tên thiết bị!');
+        return;
+    }
+
+    const data = {
+        id: editingProfileId || ('prof_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)),
+        name,
+        brand: document.getElementById('profBrand').value,
+        port: parseInt(document.getElementById('profPort').value) || 554,
+        localIp: document.getElementById('profLocalIp').value.trim(),
+        remoteHost: document.getElementById('profRemoteHost').value.trim(),
+        remotePort: parseInt(document.getElementById('profRemotePort').value) || 10554,
+        user: document.getElementById('profUser').value.trim(),
+        pass: document.getElementById('profPass').value,
+        notes: document.getElementById('profNotes').value.trim()
+    };
+
+    if (editingProfileId) {
+        const idx = camProfiles.findIndex(p => p.id === editingProfileId);
+        if (idx >= 0) camProfiles[idx] = data;
+    } else {
+        camProfiles.push(data);
+    }
+
+    saveCamProfiles();
+    renderCamProfiles();
+    document.getElementById('modalCamProfile')?.classList.add('hidden');
+    editingProfileId = null;
+}
+
+function editCamProfile(id) {
+    openCamProfileModal(id);
+}
+
+function deleteCamProfile(id) {
+    const prof = camProfiles.find(p => p.id === id);
+    if (!prof) return;
+    if (!confirm(`Xóa camera "${prof.name}" khỏi danh bạ?`)) return;
+    camProfiles = camProfiles.filter(p => p.id !== id);
+    saveCamProfiles();
+    renderCamProfiles();
+}
+
+function connectCamProfile(id, mode) {
+    const prof = camProfiles.find(p => p.id === id);
+    if (!prof) return;
+
+    if (!currentDevice) {
+        alert('Vui lòng chọn một thiết bị máy khách (Client) từ danh sách bên trái trước!');
+        return;
+    }
+
+    const brandInfo = BRAND_INFO[prof.brand] || BRAND_INFO.custom;
+    const auth = prof.pass ? `${encodeURIComponent(prof.user)}:${encodeURIComponent(prof.pass)}@` : (prof.user ? `${encodeURIComponent(prof.user)}@` : '');
+    let rtspUrl;
+
+    if (mode === 'local') {
+        rtspUrl = `rtsp://${auth}${prof.localIp}:${prof.port}${brandInfo.rtspHD}`;
+    } else {
+        rtspUrl = `rtsp://${auth}${prof.remoteHost}:${prof.remotePort}${brandInfo.rtspHD}`;
+    }
+
+    console.log(`[CamProfile] Connecting ${mode}: ${prof.name} → ${rtspUrl.replace(/:[^:@]+@/, ':***@')}`);
+
+    // Also fill the camera config form for consistency
+    const camIp = document.getElementById('camIpInput');
+    const camPort = document.getElementById('camPortInput');
+    const camUser = document.getElementById('camUserInput');
+    const camPass = document.getElementById('camPassInput');
+    const camBrand = document.getElementById('camBrandSelect');
+    if (camIp) camIp.value = mode === 'local' ? prof.localIp : prof.remoteHost;
+    if (camPort) camPort.value = mode === 'local' ? prof.port : prof.remotePort;
+    if (camUser) camUser.value = prof.user;
+    if (camPass) camPass.value = prof.pass;
+    if (camBrand) camBrand.value = prof.brand;
+
+    // Open stream channel using the custom RTSP URL
+    const streamLabel = `${prof.name} (${mode === 'local' ? 'LAN' : 'WAN'})`;
+    openStreamChannel(currentDevice.device_id, 'custom', streamLabel, rtspUrl);
+}
+
+// Event listeners for modal
+document.getElementById('btnAddCamProfile')?.addEventListener('click', () => openCamProfileModal());
+document.getElementById('btnCloseCamProfile')?.addEventListener('click', () => document.getElementById('modalCamProfile')?.classList.add('hidden'));
+document.getElementById('btnCancelCamProfile')?.addEventListener('click', () => document.getElementById('modalCamProfile')?.classList.add('hidden'));
+document.getElementById('btnSaveCamProfile')?.addEventListener('click', saveCamProfileFromModal);
+
+// Load profiles on startup
+loadCamProfiles();

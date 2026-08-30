@@ -148,6 +148,86 @@
                         </div>
                     </div>
 
+                    <!-- Camera Profiles Manager -->
+                    <div class="settings-card" style="margin-bottom: 20px; border-left: 4px solid #7c3aed;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <h3 style="margin: 0; color: #0f172a; font-size: 16px;"><i class="fa-solid fa-address-book" style="color: #7c3aed;"></i> Danh Bạ Camera (Camera Profiles)</h3>
+                                <p style="margin: 4px 0 0 0; font-size: 12px; color: #64748b;">Thiết lập sẵn thông tin camera. Chỉ cần bấm kết nối — không cần gõ lại địa chỉ, tài khoản mỗi lần.</p>
+                            </div>
+                            <button id="btnAddCamProfile" class="btn-primary" style="font-size: 13px; padding: 7px 14px; background: #7c3aed; cursor: pointer;"><i class="fa-solid fa-plus"></i> Thêm Camera</button>
+                        </div>
+
+                        <!-- Profile Cards Grid -->
+                        <div id="camProfileGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; margin-bottom: 0;">
+                            <!-- Profiles rendered by JS -->
+                            <div style="padding: 20px; text-align: center; color: #94a3b8; font-size: 13px; grid-column: 1/-1;">
+                                <i class="fa-solid fa-spinner fa-spin"></i> Đang tải danh bạ camera...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal: Add/Edit Camera Profile -->
+                    <div id="modalCamProfile" class="overlay hidden" style="z-index: 1000;">
+                        <div class="login-card" style="max-width: 520px; text-align: left; background: #ffffff; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.15);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px;">
+                                <h3 id="modalCamProfileTitle" style="margin: 0; font-size: 16px; color: #0f172a;"><i class="fa-solid fa-camera" style="color: #7c3aed;"></i> Thêm Camera Mới</h3>
+                                <button id="btnCloseCamProfile" class="icon-btn" style="font-size: 18px; color: #94a3b8;"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                            <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b; font-weight: 500;">Tên thiết bị:</label>
+                                    <input type="text" id="profName" placeholder="Ví dụ: Camera Nhà, Camera Văn Phòng..." style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">Hãng Camera:</label>
+                                        <select id="profBrand" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                            <option value="icsee">iCSee / XMEye (Xiongmai)</option>
+                                            <option value="tapo">TP-Link Tapo</option>
+                                            <option value="generic">Hikvision / Dahua / Generic</option>
+                                            <option value="custom">Tùy chỉnh RTSP URL</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">Cổng RTSP:</label>
+                                        <input type="number" id="profPort" value="554" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b; font-weight: 500;">IP Nội Bộ (LAN — khi cùng mạng WiFi):</label>
+                                    <input type="text" id="profLocalIp" placeholder="Ví dụ: 192.168.11.19" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b; font-weight: 500;">IP / DDNS Từ Xa (khi truy cập từ bên ngoài):</label>
+                                    <input type="text" id="profRemoteHost" placeholder="Ví dụ: 219.104.132.28 hoặc myhouse.ddns.net (tuỳ chọn)" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">Cổng Ngoài:</label>
+                                        <input type="number" id="profRemotePort" value="10554" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace;">
+                                    </div>
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">User:</label>
+                                        <input type="text" id="profUser" placeholder="admin" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                    </div>
+                                    <div>
+                                        <label style="display: block; margin-bottom: 4px; color: #64748b;">Pass:</label>
+                                        <input type="password" id="profPass" style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 4px; color: #64748b;">Ghi chú:</label>
+                                    <input type="text" id="profNotes" placeholder="WiFi nhà, tầng 1, phòng khách..." style="width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px;">
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                <button id="btnSaveCamProfile" class="btn-primary" style="flex: 1; padding: 10px; background: #7c3aed; cursor: pointer;"><i class="fa-solid fa-save"></i> Lưu</button>
+                                <button id="btnCancelCamProfile" class="btn-secondary" style="padding: 10px 20px; cursor: pointer;">Hủy</button>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Grid 2 Columns for Panels -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px; margin-bottom: 20px;">
                         
@@ -332,6 +412,45 @@
                             </div>
                         </div>
 
+                        <!-- Quick Preset Toggle Buttons -->
+                        <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;">
+                            <div id="presetCamRtsp" class="upnp-preset-card" style="flex: 1; min-width: 200px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <span style="font-size: 13px; font-weight: 600; color: #0f172a;"><i class="fa-solid fa-video" style="color: #0D9488;"></i> Camera RTSP</span>
+                                    <span id="presetCamRtspStatus" class="badge" style="background: #fee2e2; color: #dc2626; font-size: 10px;">Đóng</span>
+                                </div>
+                                <div style="font-size: 11px; color: #64748b; margin-bottom: 10px;">Cổng 10554 → Camera:554<br>Xem camera từ bên ngoài mạng</div>
+                                <button id="btnPresetCamRtsp" onclick="togglePresetPort('cam_rtsp')" class="btn-primary" style="width: 100%; padding: 7px; font-size: 12px; background: #0D9488; cursor: pointer;">
+                                    <i class="fa-solid fa-door-open"></i> Mở Cổng
+                                </button>
+                            </div>
+                            <div id="presetSmApi" class="upnp-preset-card" style="flex: 1; min-width: 200px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <span style="font-size: 13px; font-weight: 600; color: #0f172a;"><i class="fa-solid fa-server" style="color: #2563eb;"></i> Service Manager API</span>
+                                    <span id="presetSmApiStatus" class="badge" style="background: #fee2e2; color: #dc2626; font-size: 10px;">Đóng</span>
+                                </div>
+                                <div style="font-size: 11px; color: #64748b; margin-bottom: 10px;">Cổng 1984 → localhost:1984<br>go2rtc API truy cập từ xa</div>
+                                <button id="btnPresetSmApi" onclick="togglePresetPort('sm_api')" class="btn-primary" style="width: 100%; padding: 7px; font-size: 12px; background: #2563eb; cursor: pointer;">
+                                    <i class="fa-solid fa-door-open"></i> Mở Cổng
+                                </button>
+                            </div>
+                            <div id="presetSmWebrtc" class="upnp-preset-card" style="flex: 1; min-width: 200px; background: #f8fafc; border: 2px solid #e2e8f0; border-radius: 10px; padding: 14px; cursor: pointer; transition: all 0.2s;">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                                    <span style="font-size: 13px; font-weight: 600; color: #0f172a;"><i class="fa-solid fa-tower-broadcast" style="color: #7c3aed;"></i> WebRTC Stream</span>
+                                    <span id="presetSmWebrtcStatus" class="badge" style="background: #fee2e2; color: #dc2626; font-size: 10px;">Đóng</span>
+                                </div>
+                                <div style="font-size: 11px; color: #64748b; margin-bottom: 10px;">Cổng 8555 → localhost:8555<br>WebRTC live stream từ xa</div>
+                                <button id="btnPresetSmWebrtc" onclick="togglePresetPort('sm_webrtc')" class="btn-primary" style="width: 100%; padding: 7px; font-size: 12px; background: #7c3aed; cursor: pointer;">
+                                    <i class="fa-solid fa-door-open"></i> Mở Cổng
+                                </button>
+                            </div>
+                        </div>
+
+                        <details style="margin-bottom: 15px;">
+                            <summary style="cursor: pointer; font-size: 13px; color: #64748b; padding: 8px; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0;">
+                                <i class="fa-solid fa-sliders"></i> Mở cổng thủ công (nâng cao)
+                            </summary>
+
                         <!-- Form thêm cổng -->
                         <div style="display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; background: #f8fafc; padding: 12px; border-radius: 8px; border: 1px solid #e2e8f0; align-items: flex-end;">
                             <div style="flex: 1; min-width: 130px;">
@@ -373,6 +492,7 @@
                                 </tbody>
                             </table>
                         </div>
+                        </details>
                     </div>
 
                     <!-- Panel 5: Link RTSP Xem Trực Tiếp Từ Xa -->
