@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Đại Cung Điện | Camera Dashboard',
-  description: 'Quản lý và giám sát Camera tự động qua WiFi',
+  title: 'Service Manager',
+  description: 'Service Manager - Remote Device Control',
 };
 
 export default function RootLayout({
@@ -13,11 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body>
-        <div className="bg-orbs">
-          <div className="orb orb-1"></div>
-          <div className="orb orb-2"></div>
-        </div>
+      <body style={{ margin: 0, padding: 0, background: '#F8FAFC' }}>
         {children}
       </body>
     </html>

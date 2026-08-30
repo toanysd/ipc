@@ -14,8 +14,8 @@ export async function GET(req: NextRequest) {
     return new Response('Missing RTSP URL parameter', { status: 400 });
   }
 
-  if (!url.startsWith('rtsp://') && !url.startsWith('rtsps://') && !url.startsWith('http://')) {
-    return new Response('Invalid protocol. Only rtsp://, rtsps://, and http:// are allowed.', { status: 400 });
+  if (!url.startsWith('rtsp://') && !url.startsWith('rtsps://') && !url.startsWith('http://') && !url.startsWith('https://')) {
+    return new Response('Invalid protocol. Only rtsp://, rtsps://, http://, and https:// are allowed.', { status: 400 });
   }
 
   if (activeStreamsCount >= MAX_CONCURRENT_STREAMS) {
@@ -43,10 +43,17 @@ export async function GET(req: NextRequest) {
     if (command) command.kill('SIGKILL');
   });
 
+  const quality = req.nextUrl.searchParams.get('quality') || 'hd';
+
+  // Dynamic output options based on quality setting
+  const fpsOption = quality === 'sd' ? '10' : quality === 'hd' ? '25' : '15';
+  const qualityOption = quality === 'sd' ? '6' : quality === 'hd' ? '2' : '3';
+  const scaleOption = quality === 'sd' ? '640x360' : quality === 'hd' ? '1920x1080' : '1280x720';
+
   // Create a Web API ReadableStream
   const stream = new ReadableStream({
     start(controller) {
-      console.log(`Bắt đầu proxy luồng RTSP: ${url}`);
+      console.log(`Bắt đầu proxy luồng RTSP: ${url} (Chất lượng: ${quality.toUpperCase()})`);
 
       command = ffmpeg()
         .input(url)
@@ -56,11 +63,11 @@ export async function GET(req: NextRequest) {
           '-probesize', '1000000'
         ])
         .outputOptions([
-          '-f mpjpeg', // Multipart JPEG format
-          '-r 15',     // Frame rate: 15 fps (smooth enough for monitoring, saves bandwidth)
-          '-q:v 3',    // Quality (1-31, lower is better, 3 is very good)
-          '-an',       // Disable audio (since MJPEG doesn't support audio and saves resources)
-          '-s 1280x720' // Scale to 720p to guarantee smooth performance across devices
+          '-f mpjpeg',       // Multipart JPEG format
+          `-r ${fpsOption}`,  // Frame rate
+          `-q:v ${qualityOption}`, // Quality (1-31, 2 is high quality)
+          '-an',             // Disable audio
+          `-s ${scaleOption}`// Resolution
         ])
         .on('start', (cmdLine) => {
           console.log(`FFmpeg started: ${cmdLine}`);
@@ -128,7 +135,7 @@ export async function GET(req: NextRequest) {
   // Return the stream with the specific MJPEG multipart content type
   return new Response(stream, {
     headers: {
-      'Content-Type': 'multipart/x-mixed-replace; boundary=--ffserver',
+      'Content-Type': 'multipart/x-mixed-replace; boundary=ffmpeg',
       'Cache-Control': 'no-cache',
       'Connection': 'close',
       'Pragma': 'no-cache'

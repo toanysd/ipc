@@ -70,3 +70,12 @@ start_ipc.bat
 backend/coverage/
 backend/dist/
 backend/adversarial.*
+
+# CoreService runtime files
+ipc_port.txt
+CoreService/.state/
+CoreService/REMOTE_ACCESS.txt
+CoreService/client/config.json
+CoreService/client/client.log
+dist/
+.antitheft/

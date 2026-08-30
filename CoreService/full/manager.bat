@@ -1,0 +1,3 @@
+@echo off
+echo  Opening Manager Dashboard...
+start http://localhost:4200/manager

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Service Manager - Thiết lập</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #F1F5F9;
+      color: #0F172A;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      -webkit-app-region: drag;
+    }
+    .setup-card {
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      border-radius: 16px;
+      padding: 48px 40px;
+      width: 480px;
+      text-align: center;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      -webkit-app-region: no-drag;
+    }
+    .logo {
+      width: 64px; height: 64px;
+      background: linear-gradient(135deg, #2563EB, #3B82F6);
+      border-radius: 16px;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 28px; color: #fff;
+    }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; color: #0F172A; }
+    p { font-size: 14px; color: #64748B; margin-bottom: 32px; line-height: 1.5; }
+    .btn-group { display: flex; flex-direction: column; gap: 12px; }
+    .btn {
+      display: flex; align-items: center; gap: 14px;
+      background: #FFFFFF;
+      border: 2px solid #E2E8F0;
+      border-radius: 12px;
+      padding: 18px 20px;
+      font-size: 15px; font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+      color: #0F172A;
+      font-family: inherit;
+    }
+    .btn:hover { border-color: #2563EB; background: #EFF6FF; }
+    .btn-icon {
+      width: 44px; height: 44px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0;
+    }
+    .btn-manager .btn-icon { background: #DCFCE7; }
+    .btn-client .btn-icon { background: #DBEAFE; }
+    .btn-title { font-weight: 600; margin-bottom: 2px; }
+    .btn-desc { font-size: 12px; color: #94A3B8; font-weight: 400; }
+    .footer { margin-top: 24px; font-size: 11px; color: #94A3B8; }
+  </style>
+</head>
+<body>
+  <div class="setup-card">
+    <div class="logo">🛡️</div>
+    <h1>Service Manager</h1>
+    <p>Chọn chế độ hoạt động cho máy tính này.</p>
+    
+    <div class="btn-group">
+      <button class="btn btn-manager" onclick="selectRole('manager')">
+        <div class="btn-icon">💻</div>
+        <div>
+          <div class="btn-title">Máy chủ Quản lý</div>
+          <div class="btn-desc">Xem camera, quản lý thiết bị, điều khiển từ xa</div>
+        </div>
+      </button>
+      
+      <button class="btn btn-client" onclick="selectRole('client')">
+        <div class="btn-icon">🛡️</div>
+        <div>
+          <div class="btn-title">Máy khách (Chạy ngầm)</div>
+          <div class="btn-desc">Cài trên thiết bị cần bảo vệ, chạy ẩn trong nền</div>
+        </div>
+      </button>
+    </div>
+    
+    <div class="footer">Phiên bản 0.2.0 • Service Manager</div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+    function selectRole(role) {
+      if (role === 'client') {
+        if (!confirm('Chế độ Máy khách sẽ chạy ẩn trong nền không có giao diện.\nỨng dụng sẽ tự khởi động cùng Windows.\n\nBạn có chắc chắn?')) return;
+      }
+      ipcRenderer.send('setup-complete', role);
+    }
+  </script>
+</body>
+</html>

@@ -19,6 +19,10 @@ export interface DiscoveredCamera {
   port: number;
   name: string;
   rtspUrl: string;
+  dvripUrl?: string;       // DVRIP main stream (HD) - subtype=0
+  dvripExtraUrl?: string;  // DVRIP extra stream (SD) - subtype=1
+  rtspMainUrl?: string;    // RTSP main stream - stream=0
+  rtspExtraUrl?: string;   // RTSP extra stream - stream=1
   serviceUrl?: string;
 }
 
@@ -185,19 +189,49 @@ export async function discoverCameras(): Promise<DiscoveredCamera[]> {
           }
         }
         
-        const uniqueSubnetIPs = Array.from(new Set(subnetIPs));
-        const portsToScan = [80, 554, 8080, 8899];
+        // Filter out router gateway IPs (ending in .1 or .255) to prevent misidentifying WiFi routers as cameras
+        const candidateIPs = Array.from(new Set(subnetIPs)).filter(ip => {
+          const parts = ip.split('.');
+          const lastOctet = parseInt(parts[3], 10);
+          return lastOctet !== 1 && lastOctet !== 255;
+        });
+
+        // Scan RTSP port 554 and XiongMai/iCSee media port 34567 & ONVIF 8899
+        const portsToScan = [554, 34567, 8899, 80];
         
-        console.log(`Subnet scan: scanning ${uniqueSubnetIPs.length} IPs on ports ${portsToScan.join(', ')}...`);
-        const openTargets = await scanIPs(uniqueSubnetIPs, portsToScan, 60);
+        console.log(`Subnet scan: scanning ${candidateIPs.length} candidate IPs on ports ${portsToScan.join(', ')}...`);
+        const openTargets = await scanIPs(candidateIPs, portsToScan, 60);
         console.log(`Subnet scan found open ports:`, JSON.stringify(openTargets));
         
+        // Group by IP to check if RTSP port 554 or 34567 is actually open
+        const ipMap = new Map<string, number[]>();
         for (const target of openTargets) {
-          const serviceUrl = target.port === 554 
-            ? `http://${target.ip}:554/cam/realmonitor`
-            : `http://${target.ip}:${target.port}/onvif/device_service`;
-          
-          infos.push({ xaddrs: [serviceUrl] });
+          if (!ipMap.has(target.ip)) ipMap.set(target.ip, []);
+          ipMap.get(target.ip)!.push(target.port);
+        }
+
+        // Only treat an IP as a camera if it has RTSP 554, 34567, 8899 open (NOT just port 80)
+        for (const [ip, openPorts] of ipMap.entries()) {
+          const hasCameraPort = openPorts.includes(554) || openPorts.includes(34567) || openPorts.includes(8899);
+          if (hasCameraPort) {
+            const serviceUrl = openPorts.includes(554)
+              ? `http://${ip}:554/cam/realmonitor`
+              : `http://${ip}:${openPorts[0]}/onvif/device_service`;
+            
+            const hasDvrip = openPorts.includes(34567);
+            const hasRtsp = openPorts.includes(554);
+            
+            // Generate stream URLs with main + extra fallback
+            // DVRIP: subtype=0 = main (HD), subtype=1 = extra (SD)
+            // RTSP XM: stream=0 = main, stream=1 = extra
+            infos.push({ 
+              xaddrs: [serviceUrl],
+              _dvripUrl: hasDvrip ? `dvrip://admin:@${ip}:34567?channel=0&subtype=0` : undefined,
+              _dvripExtraUrl: hasDvrip ? `dvrip://admin:@${ip}:34567?channel=0&subtype=1` : undefined,
+              _rtspMainUrl: hasRtsp ? `rtsp://admin:@${ip}:554/user=admin&password=&channel=0&stream=0.sdp?real_stream` : undefined,
+              _rtspExtraUrl: hasRtsp ? `rtsp://admin:@${ip}:554/user=admin&password=&channel=0&stream=1.sdp?real_stream` : undefined,
+            });
+          }
         }
       } catch (e: any) {
         console.warn('Subnet scan failed:', e.message);
@@ -273,6 +307,10 @@ export async function discoverCameras(): Promise<DiscoveredCamera[]> {
         port,
         name,
         rtspUrl,
+        dvripUrl: info._dvripUrl || undefined,
+        dvripExtraUrl: info._dvripExtraUrl || undefined,
+        rtspMainUrl: info._rtspMainUrl || undefined,
+        rtspExtraUrl: info._rtspExtraUrl || undefined,
         serviceUrl: xaddr
       };
     });

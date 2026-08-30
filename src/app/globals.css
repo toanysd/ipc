@@ -528,3 +528,149 @@ body {
     display: none;
   }
 }
+
+/* --- Web Production Surveillance & Cloud Login Styles --- */
+.cloud-login-wrapper {
+  width: 100%;
+  padding: 2rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cloud-login-card {
+  width: 100%;
+  max-width: 440px;
+  background: rgba(22, 27, 34, 0.75);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  border-radius: 16px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(88, 166, 255, 0.15);
+  padding: 2.2rem;
+}
+
+.web-monitor-player {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.p2p-badge {
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--primary);
+  border: 1px solid rgba(88, 166, 255, 0.3);
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.privacy-blur {
+  filter: blur(25px);
+  pointer-events: none;
+  transition: filter 0.3s ease;
+}
+
+.pulse-red {
+  animation: pulse-red-anim 1.5s infinite;
+}
+
+@keyframes pulse-red-anim {
+  0% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(248, 81, 73, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); }
+}
+
+.badge-quality {
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.badge-quality.hd {
+  background: rgba(46, 160, 67, 0.25);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.5);
+}
+
+.badge-quality.sd {
+  background: rgba(255, 165, 0, 0.25);
+  color: #ffa500;
+  border: 1px solid rgba(255, 165, 0, 0.5);
+}
+
+/* --- Desktop Live View Display Modes --- */
+.desktop-live-container {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.desktop-live-container.live-normal {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.desktop-live-container.live-expanded {
+  width: 100%;
+  max-width: 100%;
+}
+
+.desktop-live-container.live-minimized {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 340px;
+  height: 220px;
+  z-index: 999;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.8), 0 0 15px rgba(88, 166, 255, 0.3);
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid var(--primary);
+}
+
+.desktop-live-container.live-hidden {
+  display: none !important;
+}
+
+.unhide-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.8rem 1.2rem;
+  background: rgba(10, 12, 16, 0.85);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--primary);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.media-tab-btn {
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  transition: all 0.2s;
+}
+
+.media-tab-btn.active {
+  background: rgba(88, 166, 255, 0.2);
+  color: var(--primary);
+  border-color: rgba(88, 166, 255, 0.4);
+}
+
+

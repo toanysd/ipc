@@ -1,0 +1,3 @@
+@echo off
+echo  Opening Camera Dashboard...
+start http://localhost:4200/

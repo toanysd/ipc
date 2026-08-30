@@ -1,0 +1,3 @@
+@echo off
+echo  Opening Webcam Emitter...
+start http://localhost:4200/emitter

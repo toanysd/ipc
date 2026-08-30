@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Service Manager - Setup</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #ffffff;
+            color: #333333;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        h1 {
+            color: #0D9488;
+            margin-bottom: 40px;
+        }
+        .btn-container {
+            display: flex;
+            gap: 20px;
+        }
+        .btn {
+            background-color: #0D9488;
+            color: #ffffff;
+            border: none;
+            border-radius: 8px;
+            padding: 20px 40px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            min-width: 200px;
+        }
+        .btn:hover {
+            background-color: #0F766E;
+        }
+    </style>
+</head>
+<body>
+    <h1>Chọn Vai Trò / Select Role</h1>
+    <div class="btn-container">
+        <button class="btn" onclick="selectRole('manager')">Máy chủ Quản lý<br>(Manager)</button>
+        <button class="btn" onclick="selectRole('client')">Máy khách<br>(Client)</button>
+    </div>
+
+    <script>
+        function selectRole(role) {
+            if (window.electronAPI && window.electronAPI.switchRole) {
+                window.electronAPI.switchRole(role);
+            }
+        }
+    </script>
+</body>
+</html>

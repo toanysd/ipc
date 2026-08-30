@@ -1,0 +1,519 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Service Manager Client</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: transparent;
+      overflow: hidden;
+    }
+
+    #pairing-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+      z-index: 9999;
+      align-items: center;
+      justify-content: center;
+    }
+    #pairing-overlay.visible { display: flex; }
+
+    #pairing-card {
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 40px 48px;
+      width: 420px;
+      max-width: 90vw;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.28);
+      text-align: center;
+    }
+
+    #pairing-card h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 6px;
+    }
+
+    #pairing-card .subtitle {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 32px;
+    }
+
+    #device-code-box {
+      background: #f4f6fb;
+      border: 2px dashed #c0c8dc;
+      border-radius: 12px;
+      padding: 18px 24px;
+      margin-bottom: 12px;
+    }
+
+    #device-code {
+      font-size: 36px;
+      font-weight: 800;
+      letter-spacing: 6px;
+      color: #2563eb;
+      font-family: "Courier New", Courier, monospace;
+      user-select: all;
+    }
+
+    .instruction {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 28px;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .btn {
+      cursor: pointer;
+      border: none;
+      border-radius: 8px;
+      padding: 11px 22px;
+      font-size: 14px;
+      font-weight: 600;
+      transition: opacity 0.15s;
+    }
+    .btn:hover { opacity: 0.85; }
+    .btn:active { opacity: 0.7; }
+
+    .btn-copy { background: #e8edf8; color: #2563eb; }
+    .btn-done { background: #2563eb; color: #fff; }
+
+    #copy-feedback {
+      font-size: 12px;
+      color: #16a34a;
+      margin-top: 8px;
+      min-height: 16px;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="pairing-overlay">
+    <div id="pairing-card">
+      <h1>Service Manager</h1>
+      <p class="subtitle">Thiet lap may khach</p>
+
+      <div id="device-code-box">
+        <div id="device-code">...</div>
+      </div>
+      <p id="copy-feedback"></p>
+
+      <p class="instruction">Nhap ma nay vao ung dung Quan ly de ghep noi</p>
+
+      <div class="btn-row">
+        <button class="btn btn-copy" id="btn-copy">Sao chep</button>
+        <button class="btn btn-done" id="btn-done">Da ghep noi - Dong</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <script>
+    "use strict";
+
+    const { ipcRenderer } = require("electron");
+    const os = require("os");
+
+    /* ── Device ID ── */
+    function generateDeviceId() {
+      const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+      let suffix = "";
+      for (let i = 0; i < 6; i++) {
+        suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return "IPC-" + suffix;
+    }
+
+    let myDeviceId = localStorage.getItem("sm_device_id");
+    if (!myDeviceId) {
+      myDeviceId = generateDeviceId();
+      localStorage.setItem("sm_device_id", myDeviceId);
+    }
+
+    console.log("[IPC-Client] Device ID:", myDeviceId);
+
+    /* ── Pairing window ── */
+    const overlay  = document.getElementById("pairing-overlay");
+    const codeEl   = document.getElementById("device-code");
+    const btnCopy  = document.getElementById("btn-copy");
+    const btnDone  = document.getElementById("btn-done");
+    const feedback = document.getElementById("copy-feedback");
+
+    codeEl.textContent = myDeviceId;
+
+    if (!localStorage.getItem("sm_paired")) {
+      overlay.classList.add("visible");
+    }
+
+    btnCopy.addEventListener("click", () => {
+      navigator.clipboard.writeText(myDeviceId).then(() => {
+        feedback.textContent = "Da sao chep!";
+        setTimeout(() => { feedback.textContent = ""; }, 2000);
+      }).catch(() => {
+        const ta = document.createElement("textarea");
+        ta.value = myDeviceId;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+        feedback.textContent = "Da sao chep!";
+        setTimeout(() => { feedback.textContent = ""; }, 2000);
+      });
+    });
+
+    btnDone.addEventListener("click", () => {
+      localStorage.setItem("sm_paired", "1");
+      overlay.classList.remove("visible");
+    });
+
+    /* ── State ── */
+    const connections  = new Map();
+    let webcamStream   = null;
+    let screenStream   = null;
+    let alarmActive    = false;
+    let heartbeatTimer = null;
+    let peer           = null;
+
+    /* ── Heartbeat ── */
+    function buildHeartbeat() {
+      return {
+        type:       "heartbeat",
+        deviceId:   myDeviceId,
+        hostname:   os.hostname(),
+        platform:   os.platform(),
+        arch:       os.arch(),
+        timestamp:  Date.now(),
+        uptime:     os.uptime(),
+        memory:     os.totalmem(),
+        freeMemory: os.freemem(),
+        cpus:       (os.cpus() && os.cpus().length) || 1
+      };
+    }
+
+    function broadcastHeartbeat() {
+      const hb = buildHeartbeat();
+      for (const [, conn] of connections) {
+        if (conn.open) {
+          try { conn.send(hb); } catch (e) { /* ignore */ }
+        }
+      }
+    }
+
+    function startHeartbeatTimer() {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      heartbeatTimer = setInterval(broadcastHeartbeat, 30000);
+    }
+
+    /* ── Webcam ── */
+    async function startWebcam() {
+      if (webcamStream) return webcamStream;
+      webcamStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      return webcamStream;
+    }
+
+    function stopWebcam() {
+      if (webcamStream) {
+        webcamStream.getTracks().forEach(t => t.stop());
+        webcamStream = null;
+      }
+    }
+
+    async function captureImage(stream) {
+      return new Promise((resolve, reject) => {
+        const video = document.createElement("video");
+        video.srcObject = stream;
+        video.muted = true;
+        video.play().then(() => {
+          const canvas  = document.createElement("canvas");
+          canvas.width  = video.videoWidth  || 640;
+          canvas.height = video.videoHeight || 480;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL("image/jpeg", 0.85));
+        }).catch(reject);
+      });
+    }
+
+    /* ── Screen ── */
+    async function getScreenStream() {
+      const sourceId = await ipcRenderer.invoke("get-desktop-source");
+      return navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          mandatory: {
+            chromeMediaSource:   "desktop",
+            chromeMediaSourceId: sourceId,
+            maxWidth:  1920,
+            maxHeight: 1080
+          }
+        }
+      });
+    }
+
+    async function startScreen() {
+      if (screenStream) return screenStream;
+      screenStream = await getScreenStream();
+      return screenStream;
+    }
+
+    function stopScreen() {
+      if (screenStream) {
+        screenStream.getTracks().forEach(t => t.stop());
+        screenStream = null;
+      }
+    }
+
+    /* ── Alarm ── */
+    function playAlarm() {
+      if (alarmActive) return;
+      alarmActive = true;
+
+      const ctx      = new AudioContext();
+      const osc      = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+
+      osc.connect(gainNode);
+      gainNode.connect(ctx.destination);
+
+      gainNode.gain.value = 0.8;
+      osc.type = "sawtooth";
+
+      const endTime = ctx.currentTime + 6;
+      let t = ctx.currentTime;
+      while (t < endTime) {
+        osc.frequency.setValueAtTime(880, t);
+        osc.frequency.setValueAtTime(440, t + 0.5);
+        t += 1.0;
+      }
+
+      osc.start(ctx.currentTime);
+      osc.stop(endTime);
+      osc.onended = () => { ctx.close(); alarmActive = false; };
+    }
+
+    /* ── Command handler ── */
+    async function handleCommand(conn, data) {
+      const { command, id } = data;
+      console.log("[IPC-Client] Command:", command, "id:", id);
+
+      switch (command) {
+
+        case "snap-webcam": {
+          try {
+            const stream  = await startWebcam();
+            const dataUrl = await captureImage(stream);
+            conn.send({ type: "capture-result", id, deviceId: myDeviceId, captureType: "webcam", dataUrl, timestamp: Date.now() });
+          } catch (err) {
+            console.error("[IPC-Client] snap-webcam error:", err);
+            conn.send({ type: "error", id, message: err.message });
+          }
+          break;
+        }
+
+        case "snap-screen": {
+          try {
+            const stream  = await startScreen();
+            const dataUrl = await captureImage(stream);
+            conn.send({ type: "capture-result", id, deviceId: myDeviceId, captureType: "screen", dataUrl, timestamp: Date.now() });
+          } catch (err) {
+            console.error("[IPC-Client] snap-screen error:", err);
+            conn.send({ type: "error", id, message: err.message });
+          }
+          break;
+        }
+
+        case "start-webcam": {
+          try {
+            const stream = await startWebcam();
+            const call   = peer.call(conn.peer, stream, { metadata: { source: "webcam" } });
+            call.on("error", e => console.error("[IPC-Client] webcam call error:", e));
+          } catch (err) {
+            console.error("[IPC-Client] start-webcam error:", err);
+            conn.send({ type: "error", id, message: err.message });
+          }
+          break;
+        }
+
+        case "stop-webcam": {
+          stopWebcam();
+          conn.send({ type: "ack", id, command });
+          break;
+        }
+
+        case "start-screen": {
+          try {
+            const stream = await startScreen();
+            const call   = peer.call(conn.peer, stream, { metadata: { source: "screen" } });
+            call.on("error", e => console.error("[IPC-Client] screen call error:", e));
+          } catch (err) {
+            console.error("[IPC-Client] start-screen error:", err);
+            conn.send({ type: "error", id, message: err.message });
+          }
+          break;
+        }
+
+        case "stop-screen": {
+          stopScreen();
+          conn.send({ type: "ack", id, command });
+          break;
+        }
+
+        case "lock": {
+          try {
+            await ipcRenderer.invoke("lock-workstation");
+            conn.send({ type: "ack", id, command });
+          } catch (err) {
+            console.error("[IPC-Client] lock error:", err);
+            conn.send({ type: "error", id, message: err.message });
+          }
+          break;
+        }
+
+        case "alarm": {
+          playAlarm();
+          conn.send({ type: "ack", id, command });
+          break;
+        }
+
+        case "ping":
+        case "info": {
+          conn.send(buildHeartbeat());
+          break;
+        }
+
+        default:
+          console.warn("[IPC-Client] Unknown command:", command);
+          conn.send({ type: "error", id, message: "Unknown command: " + command });
+      }
+    }
+
+    /* ── Setup connection from Manager ── */
+    function setupConnection(conn) {
+      console.log("[IPC-Client] Manager connected:", conn.peer);
+      connections.set(conn.peer, conn);
+
+      conn.on("open", () => {
+        console.log("[IPC-Client] Connection open:", conn.peer);
+        conn.send(buildHeartbeat());
+      });
+
+      conn.on("data", (data) => {
+        if (!data || typeof data !== "object") return;
+        handleCommand(conn, data).catch(err => {
+          console.error("[IPC-Client] handleCommand error:", err);
+        });
+      });
+
+      conn.on("close", () => {
+        console.log("[IPC-Client] Connection closed:", conn.peer);
+        connections.delete(conn.peer);
+      });
+
+      conn.on("error", (err) => {
+        console.error("[IPC-Client] Connection error:", conn.peer, err);
+        connections.delete(conn.peer);
+      });
+    }
+
+    /* ── Incoming video calls ── */
+    async function handleIncomingCall(call) {
+      console.log("[IPC-Client] Incoming call, source:", call.metadata && call.metadata.source);
+      try {
+        let stream;
+        const src = (call.metadata && call.metadata.source) || "webcam";
+        if (src === "screen") {
+          stream = await startScreen();
+        } else {
+          stream = await startWebcam();
+        }
+        call.answer(stream);
+        call.on("close", () => console.log("[IPC-Client] Call closed"));
+        call.on("error", err => console.error("[IPC-Client] Call error:", err));
+      } catch (err) {
+        console.error("[IPC-Client] handleIncomingCall error:", err);
+        call.close();
+      }
+    }
+
+    /* ── PeerJS init ── */
+    const ICE_SERVERS = [
+      { urls: "stun:stun.l.google.com:19302"  },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" }
+    ];
+
+    function initPeer() {
+      console.log("[IPC-Client] Initialising PeerJS with ID:", myDeviceId);
+
+      peer = new Peer(myDeviceId, {
+        config: { iceServers: ICE_SERVERS }
+      });
+
+      peer.on("open", (id) => {
+        console.log("[IPC-Client] PeerJS open. Peer ID:", id);
+        startHeartbeatTimer();
+      });
+
+      peer.on("connection", (conn) => {
+        setupConnection(conn);
+      });
+
+      peer.on("call", (call) => {
+        handleIncomingCall(call).catch(err => {
+          console.error("[IPC-Client] Unhandled call error:", err);
+        });
+      });
+
+      peer.on("disconnected", () => {
+        console.warn("[IPC-Client] PeerJS disconnected. Attempting reconnect...");
+        setTimeout(() => {
+          if (peer && !peer.destroyed) {
+            peer.reconnect();
+          } else {
+            initPeer();
+          }
+        }, 5000);
+      });
+
+      peer.on("error", (err) => {
+        console.error("[IPC-Client] PeerJS error:", err.type, err);
+
+        if (err.type === "unavailable-id") {
+          console.warn("[IPC-Client] Peer ID unavailable, generating new device ID...");
+          myDeviceId = generateDeviceId();
+          localStorage.setItem("sm_device_id", myDeviceId);
+          codeEl.textContent = myDeviceId;
+          setTimeout(initPeer, 5000);
+          return;
+        }
+
+        setTimeout(() => {
+          if (peer && !peer.destroyed) {
+            peer.reconnect();
+          } else {
+            initPeer();
+          }
+        }, 5000);
+      });
+    }
+
+    /* ── Boot ── */
+    initPeer();
+
+  </script>
+</body>
+</html>
+
