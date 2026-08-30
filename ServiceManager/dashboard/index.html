@@ -83,28 +83,47 @@
                         <span id="actionStatus" style="align-self: center; font-size: 13px; color: #0D9488; font-weight: 500; margin-left: 10px;"></span>
                     </div>
 
-                    <div class="filters">
-                        <select id="typeFilter">
-                            <option value="all">Tất Cả Loại</option>
-                            <option value="screenshot">Ảnh Màn Hình</option>
-                            <option value="webcam">Ảnh Webcam</option>
-                            <option value="clipboard">Bộ Nhớ Tạm (Clipboard)</option>
-                        </select>
+                    <!-- Media Privacy Shield -->
+                    <div id="mediaPrivacyShield" style="background: #ffffff; border: 2px solid #e2e8f0; border-radius: 10px; padding: 40px 20px; text-align: center; margin-bottom: 15px;">
+                        <div style="font-size: 48px; margin-bottom: 12px; opacity: 0.4;">🔒</div>
+                        <h3 style="margin: 0 0 8px 0; color: #334155; font-size: 16px;">Nội Dung Được Bảo Vệ</h3>
+                        <p style="margin: 0 0 16px 0; font-size: 13px; color: #94a3b8;">Ảnh chụp màn hình, webcam và clipboard đang được ẩn để bảo mật.<br>Nhập mật khẩu cấp 2 để xem.</p>
+                        <button id="btnShowMedia" class="btn-primary" style="padding: 10px 28px; font-size: 14px; background: #0D9488; cursor: pointer; border-radius: 8px;">
+                            <i class="fa-solid fa-eye"></i> Hiển Thị Nội Dung
+                        </button>
+                        <div id="mediaShieldStatus" style="font-size: 12px; color: #ef4444; margin-top: 10px;"></div>
                     </div>
-                    <div class="gallery-toolbar">
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="selectAllCaptures">
-                            <label for="selectAllCaptures">Chọn Tất Cả</label>
-                            <span id="captureSelectCount" style="margin-left: 10px; font-weight: 600;">Đã chọn: 0 / Tổng: 0</span>
+
+                    <!-- Media Content (hidden by default) -->
+                    <div id="mediaContentWrapper" class="hidden">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                            <div class="filters" style="margin-bottom: 0;">
+                                <select id="typeFilter">
+                                    <option value="all">Tất Cả Loại</option>
+                                    <option value="screenshot">Ảnh Màn Hình</option>
+                                    <option value="webcam">Ảnh Webcam</option>
+                                    <option value="clipboard">Bộ Nhớ Tạm (Clipboard)</option>
+                                </select>
+                            </div>
+                            <button id="btnHideMedia" class="btn-secondary" style="font-size: 12px; padding: 6px 14px; color: #7c3aed; border-color: #c4b5fd; cursor: pointer;">
+                                <i class="fa-solid fa-eye-slash"></i> Ẩn Nội Dung
+                            </button>
                         </div>
-                        <div style="display: flex; gap: 8px;">
-                            <button id="btnLockSelected" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;"><i class="fa-solid fa-lock"></i> Khóa/Mở Khóa Đã Chọn</button>
-                            <button id="btnDeleteSelected" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #dc2626;"><i class="fa-solid fa-trash"></i> Xóa Đã Chọn</button>
-                            <button id="btnDeleteAll" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #dc2626;"><i class="fa-solid fa-trash-can"></i> Xóa Tất Cả</button>
+                        <div class="gallery-toolbar">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <input type="checkbox" id="selectAllCaptures">
+                                <label for="selectAllCaptures">Chọn Tất Cả</label>
+                                <span id="captureSelectCount" style="margin-left: 10px; font-weight: 600;">Đã chọn: 0 / Tổng: 0</span>
+                            </div>
+                            <div style="display: flex; gap: 8px;">
+                                <button id="btnLockSelected" class="btn-secondary" style="font-size: 12px; padding: 6px 12px;"><i class="fa-solid fa-lock"></i> Khóa/Mở Khóa Đã Chọn</button>
+                                <button id="btnDeleteSelected" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #dc2626;"><i class="fa-solid fa-trash"></i> Xóa Đã Chọn</button>
+                                <button id="btnDeleteAll" class="btn-secondary" style="font-size: 12px; padding: 6px 12px; color: #dc2626;"><i class="fa-solid fa-trash-can"></i> Xóa Tất Cả</button>
+                            </div>
                         </div>
-                    </div>
-                    <div id="captureGrid" class="capture-grid">
-                        <!-- Thumbnails here -->
+                        <div id="captureGrid" class="capture-grid">
+                            <!-- Thumbnails here -->
+                        </div>
                     </div>
                 </section>
 

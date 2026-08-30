@@ -2285,6 +2285,35 @@ document.getElementById('btnChangeMediaPassword')?.addEventListener('click', asy
     alert('Đã đổi mật khẩu cấp 2 thành công!');
 });
 
+// --- Media Privacy Shield: Show / Hide ---
+document.getElementById('btnShowMedia')?.addEventListener('click', async () => {
+    const statusEl = document.getElementById('mediaShieldStatus');
+    const verified = await verifyMediaPassword('xem nội dung media');
+    if (!verified) {
+        if (statusEl) statusEl.textContent = '❌ Mật khẩu không đúng hoặc đã hủy.';
+        return;
+    }
+    if (statusEl) statusEl.textContent = '';
+    
+    // Unlock: hide shield, show content
+    const shield = document.getElementById('mediaPrivacyShield');
+    const content = document.getElementById('mediaContentWrapper');
+    if (shield) shield.classList.add('hidden');
+    if (content) content.classList.remove('hidden');
+    
+    // Mark unlocked for this session (NOT persisted across page reload)
+    sessionStorage.setItem('sm_media_unlocked', '1');
+});
+
+document.getElementById('btnHideMedia')?.addEventListener('click', () => {
+    const shield = document.getElementById('mediaPrivacyShield');
+    const content = document.getElementById('mediaContentWrapper');
+    if (shield) shield.classList.remove('hidden');
+    if (content) content.classList.add('hidden');
+    
+    sessionStorage.removeItem('sm_media_unlocked');
+});
+
 document.getElementById('selectAllCaptures')?.addEventListener('change', (e) => {
     const filter = el.typeFilter ? el.typeFilter.value : 'all';
     const filtered = captures.filter(c => filter === 'all' || c.type === filter);
