@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Service Manager</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    /* Login */
+    #loginWrap {
+      display: flex; align-items: center; justify-content: center;
+      height: 100vh;
+    }
+    .login-card {
+      background: #1e293b; border-radius: 20px; padding: 44px 40px;
+      width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+    }
+    .login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
+    .login-logo-icon {
+      width: 48px; height: 48px;
+      background: linear-gradient(135deg, #2563eb, #0d9488);
+      border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+    }
+    .login-logo-text { font-size: 20px; font-weight: 700; }
+    .login-logo-sub { font-size: 12px; color: #64748b; }
+    .login-card h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+    .login-card p { font-size: 13px; color: #64748b; margin-bottom: 24px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
+    .form-group input {
+      width: 100%; padding: 11px 14px;
+      background: #0f172a; border: 1.5px solid #334155;
+      border-radius: 10px; color: #f1f5f9; font-size: 15px;
+      outline: none; transition: border-color 0.2s;
+    }
+    .form-group input:focus { border-color: #2563eb; }
+    .btn-login {
+      width: 100%; padding: 13px;
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: white; border: none; border-radius: 10px;
+      font-size: 15px; font-weight: 600; cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-login:hover { opacity: 0.9; }
+    #loginMsg { margin-top: 12px; font-size: 13px; color: #f87171; text-align: center; }
+    /* Dashboard */
+    #dashWrap { display: none; }
+    .sidebar {
+      position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
+      background: #1e293b; padding: 20px 0;
+      display: flex; flex-direction: column;
+    }
+    .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 0 20px 24px; border-bottom: 1px solid #334155; }
+    .sidebar-logo-icon {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, #2563eb, #0d9488);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .sidebar-logo-text { font-size: 15px; font-weight: 700; }
+    .nav-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 11px 20px; cursor: pointer;
+      color: #94a3b8; font-size: 14px;
+      transition: all 0.15s; margin: 2px 8px; border-radius: 10px;
+    }
+    .nav-item:hover { background: #334155; color: #f1f5f9; }
+    .nav-item.active { background: #1e3a5f; color: #60a5fa; }
+    .nav-icon { font-size: 17px; width: 22px; text-align: center; }
+    .main { margin-left: 220px; padding: 28px 32px; }
+    .page-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .card {
+      background: #1e293b; border-radius: 16px; padding: 20px 22px;
+    }
+    .card-title { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    .card-value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
+    .card-sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
+    .section { background: #1e293b; border-radius: 16px; padding: 22px; margin-bottom: 20px; }
+    .section-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #f1f5f9; }
+    pre { background: #0f172a; padding: 14px; border-radius: 12px; font-size: 12px; color: #94a3b8; white-space: pre-wrap; word-break: break-word; }
+    .badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .badge-green { background: #052e16; color: #4ade80; }
+    .badge-red { background: #3b0764; color: #f87171; }
+    .badge-yellow { background: #451a03; color: #fbbf24; }
+    .hidden { display: none !important; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { text-align: left; color: #64748b; font-size: 11px; text-transform: uppercase; padding: 0 0 10px; }
+    td { padding: 10px 0; border-top: 1px solid #1e293b; color: #cbd5e1; }
+    .btn {
+      padding: 8px 16px; border-radius: 8px; border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+    }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-secondary { background: #334155; color: #cbd5e1; }
+    .btn:hover { opacity: 0.85; }
+  </style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div id="loginWrap">
+  <div class="login-card">
+    <div class="login-logo">
+      <div class="login-logo-icon">&#9881;</div>
+      <div>
+        <div class="login-logo-text">Service Manager</div>
+        <div class="login-logo-sub">Manager Dashboard</div>
+      </div>
+    </div>
+    <h2>Xác thực</h2>
+    <p>Nhập PIN để truy cập bảng điều khiển.</p>
+    <div class="form-group">
+      <label>PIN</label>
+      <input id="pinInput" type="password" placeholder="Nhập PIN..." autofocus />
+    </div>
+    <button class="btn-login" id="loginBtn">Đăng nhập</button>
+    <div id="loginMsg"></div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashWrap">
+  <div class="sidebar">
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon">&#9881;</div>
+      <div class="sidebar-logo-text">Service Manager</div>
+    </div>
+    <div class="nav-item active" data-page="overview"><span class="nav-icon">&#128200;</span> Tổng quan</div>
+    <div class="nav-item" data-page="network"><span class="nav-icon">&#127760;</span> Mạng & UPnP</div>
+    <div class="nav-item" data-page="system"><span class="nav-icon">&#128187;</span> Hệ thống</div>
+  </div>
+
+  <div class="main">
+    <!-- Overview -->
+    <div id="page-overview">
+      <div class="page-title">Tổng quan</div>
+      <div class="cards" id="statusCards">
+        <div class="card"><div class="card-title">Trạng thái</div><div class="card-value" id="statusVal">—</div><div class="card-sub" id="hostnameVal">Đang kiểm tra...</div></div>
+        <div class="card"><div class="card-title">Uptime</div><div class="card-value" id="uptimeVal">—</div><div class="card-sub">Thời gian hoạt động</div></div>
+        <div class="card"><div class="card-title">Nền tảng</div><div class="card-value" id="platformVal" style="font-size:18px">—</div><div class="card-sub">Hệ điều hành</div></div>
+      </div>
+    </div>
+
+    <!-- Network -->
+    <div id="page-network" class="hidden">
+      <div class="page-title">Mạng & UPnP</div>
+      <div class="section">
+        <div class="section-title">Thông tin UPnP</div>
+        <pre id="upnpData">Đang tải...</pre>
+      </div>
+    </div>
+
+    <!-- System -->
+    <div id="page-system" class="hidden">
+      <div class="page-title">Thông tin hệ thống</div>
+      <div class="section">
+        <div class="section-title">Chi tiết</div>
+        <pre id="sysData">Đang tải...</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let token = '';
+
+  async function api(path, opts = {}) {
+    const res = await fetch(path, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': 'Bearer ' + token } : {}),
+        ...(opts.headers || {})
+      }
+    });
+    return res.json();
+  }
+
+  // Login
+  async function doLogin() {
+    const pin = document.getElementById('pinInput').value;
+    const result = await api('/api/login', { method: 'POST', body: JSON.stringify({ pin }) });
+    if (!result.success) {
+      document.getElementById('loginMsg').textContent = '❌ PIN không đúng.';
+      return;
+    }
+    token = result.token;
+    document.getElementById('loginWrap').style.display = 'none';
+    document.getElementById('dashWrap').style.display = 'block';
+    loadOverview();
+  }
+
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+  // Nav
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      item.classList.add('active');
+      const page = item.dataset.page;
+      document.querySelectorAll('.main > div[id^="page-"]').forEach(p => p.classList.add('hidden'));
+      document.getElementById('page-' + page).classList.remove('hidden');
+      if (page === 'network') loadNetwork();
+      if (page === 'system') loadSystem();
+    });
+  });
+
+  function fmtUptime(secs) {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return h + 'h ' + m + 'm';
+  }
+
+  async function loadOverview() {
+    const st = await api('/api/status');
+    if (st && st.success) {
+      document.getElementById('statusVal').innerHTML = '<span class="badge badge-green">Online</span>';
+      document.getElementById('hostnameVal').textContent = st.hostname || '';
+      document.getElementById('uptimeVal').textContent = fmtUptime(st.uptime || 0);
+      document.getElementById('platformVal').textContent = st.platform || '';
+    }
+  }
+
+  async function loadNetwork() {
+    const upnp = await api('/api/upnp');
+    document.getElementById('upnpData').textContent = JSON.stringify(upnp, null, 2);
+  }
+
+  async function loadSystem() {
+    const st = await api('/api/status');
+    document.getElementById('sysData').textContent = JSON.stringify(st, null, 2);
+  }
+</script>
+
+</body>
+</html>

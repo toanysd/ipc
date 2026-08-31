@@ -1,16 +1,20 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, systemPreferences } = require('electron');
+const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { execSync, exec, spawn } = require('child_process');
 
-// Detect role early from command line args (--role=client or --role=manager)
+// Tên hiển thị trong Task Manager và tiến trình
+app.setName('Service Manager');
+
+// Tách userData theo role để manager và client cùng máy không xung đột
 const cmdRoleArg = process.argv.find(a => a.startsWith('--role='));
 const cmdRole = cmdRoleArg ? cmdRoleArg.split('=')[1] : null;
 
-// Separate userData per role to allow manager+client on same machine
 if (cmdRole === 'client' || process.argv.includes('--client')) {
     app.setPath('userData', path.join(app.getPath('appData'), 'ServiceManager-Client'));
+} else {
+    app.setPath('userData', path.join(app.getPath('appData'), 'ServiceManager'));
 }
 
 const server = require('./src/server');
@@ -22,36 +26,46 @@ let go2rtcProcess;
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve path to app file, hỗ trợ cả chạy từ source lẫn chạy từ portable exe.
+ */
+function resolveAppFile(...parts) {
+    // Khi chạy từ portable .exe, __dirname trỏ về asar resources, còn process.resourcesPath trỏ đúng
+    const candidates = [
+        path.join(__dirname, ...parts),
+        path.join(process.resourcesPath || '', 'app', ...parts)
+    ];
+    for (const p of candidates) {
+        try {
+            if (fs.existsSync(p)) return p;
+        } catch(e) {}
+    }
+    return candidates[0];
+}
+
+// ─── Role Management ──────────────────────────────────────────────────────────
+
 function getRoleFromRegistry() {
     try {
-        const output = execSync('reg query HKCU\\Software\\ServiceManager /v Role', { encoding: 'utf8', windowsHide: true });
-        const match = output.match(/Role\s+REG_SZ\s+(\w+)/);
-        if (match && match[1]) {
-            return match[1].toLowerCase();
-        }
-    } catch (e) {
-        // Not found or error
-    }
-    return null;
+        const out = execSync('reg query HKCU\\Software\\ServiceManager /v Role', { encoding: 'utf8', windowsHide: true });
+        const m = out.match(/Role\s+REG_SZ\s+(\w+)/);
+        return m ? m[1].toLowerCase() : null;
+    } catch(e) { return null; }
 }
 
 function setRoleInRegistry(role) {
     try {
         execSync(`reg add HKCU\\Software\\ServiceManager /v Role /t REG_SZ /d ${role} /f`, { windowsHide: true });
-    } catch (e) {
-        console.error('Failed to set role in registry', e);
-    }
+    } catch(e) { console.error('Registry write failed:', e); }
 }
 
 function getAppRole() {
-    // Command line arg takes priority
     if (cmdRole) return cmdRole;
-    
-    const regRole = getRoleFromRegistry();
-    if (regRole) return regRole;
-
-    const conf = config.load(configPath);
-    return conf.role;
+    const reg = getRoleFromRegistry();
+    if (reg) return reg;
+    return config.load(configPath).role || null;
 }
 
 function setAppRole(role) {
@@ -61,104 +75,107 @@ function setAppRole(role) {
     config.save(configPath, conf);
 }
 
+// ─── Windows ──────────────────────────────────────────────────────────────────
+
 function createSetupWindow() {
     mainWindow = new BrowserWindow({
-        width: 600,
-        height: 400,
+        width: 560,
+        height: 420,
+        resizable: false,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: resolveAppFile('preload.js'),
             contextIsolation: true,
             nodeIntegration: false
         },
-        autoHideMenuBar: true
+        autoHideMenuBar: true,
+        title: 'Service Manager'
     });
-    mainWindow.loadFile('setup.html');
+    mainWindow.loadFile(resolveAppFile('setup.html'));
 }
 
 async function startManager() {
-    // Kill existing process on port 3456 (if not self)
+    const port = 3456;
+
+    // Giải phóng port nếu bị chiếm
     try {
-        const port = 3456;
         if (os.platform() === 'win32') {
-            const output = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', windowsHide: true });
-            const lines = output.trim().split('\n');
-            if (lines.length > 0 && lines[0]) {
-                const parts = lines[0].trim().split(/\s+/);
+            const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', windowsHide: true });
+            for (const line of out.trim().split('\n').filter(Boolean)) {
+                const parts = line.trim().split(/\s+/);
                 const pid = parts[parts.length - 1];
                 if (pid && pid !== '0' && parseInt(pid, 10) !== process.pid) {
-                    execSync(`taskkill /PID ${pid} /F`, { windowsHide: true });
+                    try { execSync(`taskkill /PID ${pid} /F`, { windowsHide: true }); } catch(e) {}
                 }
             }
         }
-    } catch (e) {
-        // It's ok if nothing is running
-    }
+    } catch(e) {}
 
     try {
-        await server.start(3456, path.join(__dirname, 'dashboard'));
-        console.log('[Manager] Web server running at http://localhost:3456');
-    } catch (e) {
-        console.error('Failed to start server:', e);
+        await server.start(port, resolveAppFile('dashboard'));
+        console.log('[Manager] Web server: http://127.0.0.1:' + port);
+    } catch(e) {
+        console.error('[Manager] Failed to start server:', e);
     }
 
     mainWindow = new BrowserWindow({
-        width: 1200,
-        height: 800,
+        width: 1280,
+        height: 840,
         webPreferences: {
-            preload: path.join(__dirname, 'preload.js'),
+            preload: resolveAppFile('preload.js'),
             contextIsolation: true,
             nodeIntegration: false
-        }
+        },
+        autoHideMenuBar: true,
+        title: 'Service Manager'
     });
 
-    mainWindow.loadURL('http://localhost:3456');
-    
-    // When manager window is closed, keep server running or handle gracefully
-    mainWindow.on('closed', () => {
-        mainWindow = null;
-    });
+    mainWindow.loadURL('http://127.0.0.1:' + port);
+    mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 function startClient() {
+    // Đặt autostart khi đăng nhập Windows
     app.setLoginItemSettings({
         openAtLogin: true,
-        path: app.getPath('exe')
+        path: app.getPath('exe'),
+        args: ['--role=client']
     });
 
     clientWindow = new BrowserWindow({
         show: false,
+        title: 'Service Manager',
         webPreferences: {
             nodeIntegration: true,
             contextIsolation: false
         }
     });
 
-    // Auto-grant media permissions
-    clientWindow.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
-        if (permission === 'media') {
-            callback(true);
-        } else {
-            callback(false);
-        }
+    // Tự động chấp nhận quyền media (webcam, screen)
+    clientWindow.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
+        callback(permission === 'media');
     });
 
-    clientWindow.loadFile(path.join(__dirname, 'client', 'client.html')).catch(() => {
-        console.error('Failed to load client.html');
+    clientWindow.loadFile(resolveAppFile('client', 'client.html')).catch(err => {
+        console.error('[Client] Failed to load client.html:', err);
     });
 
-    // Start go2rtc
-    const go2rtcPath = path.join(process.resourcesPath, 'go2rtc.exe');
-    const localGo2rtc = path.join(__dirname, 'resources', 'go2rtc.exe');
-    
-    const exeToRun = fs.existsSync(go2rtcPath) ? go2rtcPath : (fs.existsSync(localGo2rtc) ? localGo2rtc : null);
-    
-    if (exeToRun) {
-        go2rtcProcess = spawn(exeToRun, [], { windowsHide: true });
-        go2rtcProcess.on('error', (err) => {
-            console.error('Failed to start go2rtc', err);
-        });
+    // Khởi động go2rtc kèm theo
+    const go2rtcPackaged = path.join(process.resourcesPath || '', 'go2rtc.exe');
+    const go2rtcLocal    = resolveAppFile('resources', 'go2rtc.exe');
+    const go2rtcExe = fs.existsSync(go2rtcPackaged) ? go2rtcPackaged
+                    : fs.existsSync(go2rtcLocal)     ? go2rtcLocal
+                    : null;
+
+    if (go2rtcExe) {
+        go2rtcProcess = spawn(go2rtcExe, [], { windowsHide: true });
+        go2rtcProcess.on('error', err => console.error('[go2rtc] Failed to start:', err));
+        console.log('[go2rtc] Started from:', go2rtcExe);
+    } else {
+        console.warn('[go2rtc] Executable not found.');
     }
 }
+
+// ─── IPC Handlers ─────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
     ipcMain.handle('get-desktop-sources', async () => {
@@ -166,7 +183,10 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('get-desktop-source', async () => {
-        const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 1920, height: 1080 } });
+        const sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: { width: 1920, height: 1080 }
+        });
         return sources[0] || null;
     });
 
@@ -175,17 +195,20 @@ app.whenReady().then(() => {
         return true;
     });
 
-    ipcMain.handle('get-system-info', () => {
-        return {
-            platform: os.platform(),
-            arch: os.arch(),
-            cpus: os.cpus(),
-            totalMemory: os.totalmem(),
-            freeMemory: os.freemem(),
-            uptime: os.uptime(),
-            hostname: os.hostname()
-        };
+    ipcMain.handle('hide-window', () => {
+        if (clientWindow) clientWindow.hide();
+        return true;
     });
+
+    ipcMain.handle('get-system-info', () => ({
+        platform: os.platform(),
+        arch: os.arch(),
+        cpus: os.cpus(),
+        totalMemory: os.totalmem(),
+        freeMemory: os.freemem(),
+        uptime: os.uptime(),
+        hostname: os.hostname()
+    }));
 
     ipcMain.handle('switch-role', (event, role) => {
         setAppRole(role);
@@ -193,21 +216,15 @@ app.whenReady().then(() => {
         app.exit(0);
     });
 
+    // Khởi chạy đúng mode
     const role = getAppRole();
-
-    if (!role) {
-        createSetupWindow();
-    } else if (role === 'manager') {
-        startManager();
-    } else if (role === 'client') {
-        startClient();
-    }
+    if (!role)           createSetupWindow();
+    else if (role === 'manager') startManager();
+    else if (role === 'client')  startClient();
 });
 
-// Do not quit when window is closed so web server stays alive for browser access
-app.on('window-all-closed', () => {
-    // Keep running
-});
+// Giữ process sống (server Express, go2rtc vẫn chạy nền)
+app.on('window-all-closed', () => {});
 
 app.on('will-quit', () => {
     if (go2rtcProcess) {

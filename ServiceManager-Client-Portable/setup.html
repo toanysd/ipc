@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <title>Service Manager</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: #0f172a;
+      color: #f1f5f9;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .wrap {
+      width: 520px;
+      background: #1e293b;
+      border-radius: 20px;
+      padding: 40px 36px;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .logo-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, #2563eb, #0d9488);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+    }
+    .logo-text { font-size: 20px; font-weight: 700; color: #f1f5f9; }
+    .logo-sub { font-size: 12px; color: #64748b; }
+    h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+    .roles { display: flex; gap: 14px; }
+    .role-card {
+      flex: 1;
+      background: #0f172a;
+      border: 2px solid #334155;
+      border-radius: 14px;
+      padding: 22px 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .role-card:hover { border-color: #2563eb; background: #1e3a5f; }
+    .role-card.client:hover { border-color: #0d9488; background: #0f2e2b; }
+    .role-icon { font-size: 32px; margin-bottom: 10px; }
+    .role-name { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .role-desc { font-size: 12px; color: #64748b; line-height: 1.5; }
+    .role-card.manager .role-name { color: #60a5fa; }
+    .role-card.client .role-name { color: #2dd4bf; }
+    .warn {
+      margin-top: 20px;
+      padding: 12px 16px;
+      background: #1a2640;
+      border-left: 3px solid #f59e0b;
+      border-radius: 8px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">
+      <div class="logo-icon">&#9881;</div>
+      <div>
+        <div class="logo-text">Service Manager</div>
+        <div class="logo-sub">Thiết lập lần đầu</div>
+      </div>
+    </div>
+    <h2>Chọn chế độ hoạt động</h2>
+    <p>Chọn vai trò cho máy tính này. Có thể thay đổi sau trong phần Cài đặt.</p>
+    <div class="roles">
+      <div class="role-card manager" id="managerBtn">
+        <div class="role-icon">&#128187;</div>
+        <div class="role-name">Manager</div>
+        <div class="role-desc">Điều khiển và giám sát từ xa. Dùng trên máy tính chính.</div>
+      </div>
+      <div class="role-card client" id="clientBtn">
+        <div class="role-icon">&#128272;</div>
+        <div class="role-name">Client</div>
+        <div class="role-desc">Chạy ẩn, cho phép truy cập từ xa và quản lý camera.</div>
+      </div>
+    </div>
+    <div class="warn">&#9888; Sau khi chọn, ứng dụng sẽ khởi động lại ở chế độ đã chọn.</div>
+  </div>
+  <script>
+    const { ipcRenderer } = require('electron');
+    document.getElementById('managerBtn').addEventListener('click', () => {
+      ipcRenderer.invoke('switch-role', 'manager');
+    });
+    document.getElementById('clientBtn').addEventListener('click', () => {
+      ipcRenderer.invoke('switch-role', 'client');
+    });
+  </script>
+</body>
+</html>
