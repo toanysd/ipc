@@ -1,11 +1,20 @@
 const fs = require('fs');
 const path = require('path');
 
+/**
+ * PIN mặc định khi chưa thiết lập.
+ * Người dùng nên đổi ngay sau lần chạy đầu tiên qua trang Cài đặt.
+ * KHÔNG được hardcode PIN cố định ở nơi khác.
+ */
+const DEFAULT_PIN = '1621';
+
 function getDefault() {
     return {
         role: null,
-        pin: '1621',
-        cameras: []
+        pin: DEFAULT_PIN,
+        cameras: [],
+        supabaseUrl: '',
+        supabaseKey: ''
     };
 }
 
@@ -13,10 +22,11 @@ function load(configPath) {
     try {
         if (fs.existsSync(configPath)) {
             const data = fs.readFileSync(configPath, 'utf8');
-            return { ...getDefault(), ...JSON.parse(data) };
+            const parsed = JSON.parse(data);
+            return { ...getDefault(), ...parsed };
         }
     } catch (e) {
-        console.error('Failed to load config', e);
+        console.error('[config] Failed to load config:', e.message);
     }
     return getDefault();
 }
@@ -27,21 +37,14 @@ function save(configPath, data) {
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
-        
-        // Merge with existing to avoid overwriting other settings if partial data passed
         const existing = load(configPath);
         const merged = { ...existing, ...data };
-        
         fs.writeFileSync(configPath, JSON.stringify(merged, null, 2), 'utf8');
         return true;
     } catch (e) {
-        console.error('Failed to save config', e);
+        console.error('[config] Failed to save config:', e.message);
         return false;
     }
 }
 
-module.exports = {
-    load,
-    save,
-    getDefault
-};
+module.exports = { load, save, getDefault, DEFAULT_PIN };

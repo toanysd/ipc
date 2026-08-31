@@ -5,68 +5,85 @@ const fs = require('fs');
 const auth = require('./auth');
 
 const app = express();
-
 app.use(express.json());
+
+// Một instance server duy nhất (tránh gọi start() nhiều lần)
+let serverInstance = null;
 
 function start(port, dashboardPath) {
     return new Promise((resolve, reject) => {
-        // Check if dashboardPath exists, create if not to avoid express static errors
+        if (serverInstance) {
+            console.log('[server] Already running.');
+            return resolve(serverInstance);
+        }
+
+        // Tạo thư mục dashboard nếu chưa có
         if (!fs.existsSync(dashboardPath)) {
             fs.mkdirSync(dashboardPath, { recursive: true });
         }
 
         app.use(express.static(dashboardPath));
 
+        // ── API: Login ──
         app.post('/api/login', (req, res) => {
-            const { pin } = req.body;
+            const { pin } = req.body || {};
+            if (!pin) return res.status(400).json({ success: false, message: 'PIN required' });
             if (auth.verifyPin(pin)) {
-                const token = auth.generateToken();
-                res.json({ success: true, token });
+                res.json({ success: true, token: auth.generateToken() });
             } else {
                 res.status(401).json({ success: false, message: 'Invalid PIN' });
             }
         });
 
-        // Middleware to verify token for subsequent API calls
+        // ── Middleware xác thực token ──
         const requireAuth = (req, res, next) => {
             const token = req.headers['authorization']?.replace('Bearer ', '');
-            if (auth.validateToken(token)) {
-                next();
-            } else {
-                res.status(401).json({ success: false, message: 'Unauthorized' });
-            }
+            if (auth.validateToken(token)) return next();
+            res.status(401).json({ success: false, message: 'Unauthorized' });
         };
 
+        // ── API: Status ──
         app.get('/api/status', requireAuth, (req, res) => {
             res.json({
                 success: true,
                 status: 'running',
                 hostname: os.hostname(),
                 uptime: os.uptime(),
-                platform: os.platform()
+                platform: os.platform(),
+                arch: os.arch(),
+                freeMemory: os.freemem(),
+                totalMemory: os.totalmem()
             });
         });
 
+        // ── API: UPnP status (dùng file trung gian từ client) ──
         app.get('/api/upnp', requireAuth, (req, res) => {
-            // Read UPnP status from status file if it exists, otherwise return mock/default
-            const statusPath = path.join(os.tmpdir(), 'upnp_status.json');
+            const statusPath = path.join(os.tmpdir(), 'sm_upnp_status.json');
             let upnpStatus = { enabled: false, externalIp: null, mappings: [] };
-            
             if (fs.existsSync(statusPath)) {
-                try {
-                    upnpStatus = JSON.parse(fs.readFileSync(statusPath, 'utf8'));
-                } catch (e) {
-                    // Ignore error, use default
-                }
+                try { upnpStatus = JSON.parse(fs.readFileSync(statusPath, 'utf8')); } catch(e) {}
             }
-            
-            res.json({
-                success: true,
-                upnp: upnpStatus
-            });
+            res.json({ success: true, upnp: upnpStatus });
         });
 
-        // Fallback for SPA routing if needed
+        // ── API: Đổi PIN (yêu cầu token hợp lệ) ──
+        app.post('/api/change-pin', requireAuth, (req, res) => {
+            const { newPin } = req.body || {};
+            if (!newPin || newPin.length < 4) {
+                return res.status(400).json({ success: false, message: 'PIN phải tối thiểu 4 ký tự' });
+            }
+            try {
+                const config = require('./config');
+                const { app: eApp } = require('electron');
+                const cfgPath = path.join(eApp.getPath('userData'), 'config.json');
+                config.save(cfgPath, { pin: newPin });
+                res.json({ success: true });
+            } catch(e) {
+                res.status(500).json({ success: false, message: e.message });
+            }
+        });
+
+        // ── SPA fallback ──
         app.get('*', (req, res) => {
             const indexHtml = path.join(dashboardPath, 'index.html');
             if (fs.existsSync(indexHtml)) {
@@ -76,8 +93,10 @@ function start(port, dashboardPath) {
             }
         });
 
-        const server = app.listen(port, '0.0.0.0', () => {
-            console.log(`Server started on port ${port}`);
+        // Bind 127.0.0.1 — chỉ truy cập nội bộ từ Electron window, tránh lộ ra mạng
+        const server = app.listen(port, '127.0.0.1', () => {
+            console.log(`[server] Running at http://127.0.0.1:${port}`);
+            serverInstance = server;
             resolve(server);
         }).on('error', (err) => {
             reject(err);
@@ -85,4 +104,11 @@ function start(port, dashboardPath) {
     });
 }
 
-module.exports = { start };
+function stop() {
+    if (serverInstance) {
+        serverInstance.close();
+        serverInstance = null;
+    }
+}
+
+module.exports = { start, stop };
