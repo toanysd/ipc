@@ -7,100 +7,75 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
-    /* Login */
-    #loginWrap {
-      display: flex; align-items: center; justify-content: center;
-      height: 100vh;
-    }
-    .login-card {
-      background: #1e293b; border-radius: 20px; padding: 44px 40px;
-      width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
-    }
+    #loginWrap { display: flex; align-items: center; justify-content: center; height: 100vh; }
+    .login-card { background: #1e293b; border-radius: 20px; padding: 44px 40px; width: 380px; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
     .login-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
-    .login-logo-icon {
-      width: 48px; height: 48px;
-      background: linear-gradient(135deg, #2563eb, #0d9488);
-      border-radius: 14px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 24px;
-    }
+    .login-logo-icon { width: 48px; height: 48px; background: linear-gradient(135deg, #2563eb, #0d9488); border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; }
     .login-logo-text { font-size: 20px; font-weight: 700; }
     .login-logo-sub { font-size: 12px; color: #64748b; }
     .login-card h2 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
     .login-card p { font-size: 13px; color: #64748b; margin-bottom: 24px; }
     .form-group { margin-bottom: 16px; }
     .form-group label { display: block; font-size: 12px; color: #94a3b8; margin-bottom: 6px; }
-    .form-group input {
-      width: 100%; padding: 11px 14px;
-      background: #0f172a; border: 1.5px solid #334155;
-      border-radius: 10px; color: #f1f5f9; font-size: 15px;
-      outline: none; transition: border-color 0.2s;
-    }
+    .form-group input { width: 100%; padding: 11px 14px; background: #0f172a; border: 1.5px solid #334155; border-radius: 10px; color: #f1f5f9; font-size: 15px; outline: none; transition: border-color 0.2s; }
     .form-group input:focus { border-color: #2563eb; }
-    .btn-login {
-      width: 100%; padding: 13px;
-      background: linear-gradient(135deg, #2563eb, #1d4ed8);
-      color: white; border: none; border-radius: 10px;
-      font-size: 15px; font-weight: 600; cursor: pointer;
-      transition: opacity 0.2s;
-    }
+    .btn-login { width: 100%; padding: 13px; background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
     .btn-login:hover { opacity: 0.9; }
     #loginMsg { margin-top: 12px; font-size: 13px; color: #f87171; text-align: center; }
-    /* Dashboard */
     #dashWrap { display: none; }
-    .sidebar {
-      position: fixed; left: 0; top: 0; bottom: 0; width: 220px;
-      background: #1e293b; padding: 20px 0;
-      display: flex; flex-direction: column;
-    }
+    .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 220px; background: #1e293b; padding: 20px 0; display: flex; flex-direction: column; }
     .sidebar-logo { display: flex; align-items: center; gap: 10px; padding: 0 20px 24px; border-bottom: 1px solid #334155; }
-    .sidebar-logo-icon {
-      width: 36px; height: 36px;
-      background: linear-gradient(135deg, #2563eb, #0d9488);
-      border-radius: 10px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-    }
+    .sidebar-logo-icon { width: 36px; height: 36px; background: linear-gradient(135deg, #2563eb, #0d9488); border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
     .sidebar-logo-text { font-size: 15px; font-weight: 700; }
-    .nav-item {
-      display: flex; align-items: center; gap: 10px;
-      padding: 11px 20px; cursor: pointer;
-      color: #94a3b8; font-size: 14px;
-      transition: all 0.15s; margin: 2px 8px; border-radius: 10px;
-    }
+    .nav-item { display: flex; align-items: center; gap: 10px; padding: 11px 20px; cursor: pointer; color: #94a3b8; font-size: 14px; transition: all 0.15s; margin: 2px 8px; border-radius: 10px; }
     .nav-item:hover { background: #334155; color: #f1f5f9; }
     .nav-item.active { background: #1e3a5f; color: #60a5fa; }
     .nav-icon { font-size: 17px; width: 22px; text-align: center; }
     .main { margin-left: 220px; padding: 28px 32px; }
     .page-title { font-size: 22px; font-weight: 700; margin-bottom: 20px; }
     .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 24px; }
-    .card {
-      background: #1e293b; border-radius: 16px; padding: 20px 22px;
-    }
+    .card { background: #1e293b; border-radius: 16px; padding: 20px 22px; }
     .card-title { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
     .card-value { font-size: 28px; font-weight: 700; color: #f1f5f9; }
     .card-sub { font-size: 12px; color: #94a3b8; margin-top: 4px; }
     .section { background: #1e293b; border-radius: 16px; padding: 22px; margin-bottom: 20px; }
     .section-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #f1f5f9; }
     pre { background: #0f172a; padding: 14px; border-radius: 12px; font-size: 12px; color: #94a3b8; white-space: pre-wrap; word-break: break-word; }
-    .badge {
-      display: inline-block; padding: 3px 10px; border-radius: 20px;
-      font-size: 11px; font-weight: 600;
-    }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
     .badge-green { background: #052e16; color: #4ade80; }
     .badge-red { background: #3b0764; color: #f87171; }
     .badge-yellow { background: #451a03; color: #fbbf24; }
+    .badge-blue { background: #1e3a5f; color: #60a5fa; }
     .hidden { display: none !important; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     th { text-align: left; color: #64748b; font-size: 11px; text-transform: uppercase; padding: 0 0 10px; }
-    td { padding: 10px 0; border-top: 1px solid #1e293b; color: #cbd5e1; }
-    .btn {
-      padding: 8px 16px; border-radius: 8px; border: none;
-      font-size: 13px; font-weight: 600; cursor: pointer;
-    }
+    td { padding: 10px 0; border-top: 1px solid #334155; color: #cbd5e1; }
+    .btn { padding: 8px 16px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
     .btn-primary { background: #2563eb; color: white; }
     .btn-secondary { background: #334155; color: #cbd5e1; }
     .btn:hover { opacity: 0.85; }
+    /* Router guide */
+    .router-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; }
+    .rtab { padding: 7px 16px; border-radius: 8px; background: #334155; color: #94a3b8; font-size: 13px; font-weight: 600; cursor: pointer; border: none; transition: all 0.15s; }
+    .rtab.active { background: #2563eb; color: #fff; }
+    .rtab:hover:not(.active) { background: #475569; color: #f1f5f9; }
+    .rpanel { display: none; }
+    .rpanel.active { display: block; }
+    .step-list { list-style: none; counter-reset: step; }
+    .step-list li { counter-increment: step; display: flex; gap: 14px; margin-bottom: 18px; align-items: flex-start; }
+    .step-list li::before { content: counter(step); min-width: 28px; height: 28px; background: #2563eb; color: #fff; border-radius: 50%; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .step-body { font-size: 13px; color: #cbd5e1; line-height: 1.6; }
+    .step-body strong { color: #f1f5f9; }
+    .step-body code { background: #0f172a; padding: 2px 7px; border-radius: 5px; font-size: 12px; color: #7dd3fc; font-family: 'Consolas', monospace; }
+    .port-table td, .port-table th { padding: 8px 12px; }
+    .port-table { background: #0f172a; border-radius: 12px; overflow: hidden; margin-top: 12px; }
+    .port-table th { background: #1e293b; }
+    .info-box { background: #1c2e4a; border-left: 3px solid #3b82f6; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: #93c5fd; line-height: 1.6; }
+    .warn-box { background: #2d1a00; border-left: 3px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; color: #fcd34d; line-height: 1.6; }
+    .copy-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+    .copy-row code { flex: 1; background: #0f172a; padding: 8px 12px; border-radius: 8px; font-size: 12px; color: #7dd3fc; font-family: 'Consolas', monospace; overflow-x: auto; }
+    .copy-btn { padding: 6px 12px; background: #334155; color: #94a3b8; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; flex-shrink: 0; }
+    .copy-btn:hover { background: #475569; color: #fff; }
   </style>
 </head>
 <body>
@@ -134,7 +109,8 @@
       <div class="sidebar-logo-text">Service Manager</div>
     </div>
     <div class="nav-item active" data-page="overview"><span class="nav-icon">&#128200;</span> Tổng quan</div>
-    <div class="nav-item" data-page="network"><span class="nav-icon">&#127760;</span> Mạng & UPnP</div>
+    <div class="nav-item" data-page="network"><span class="nav-icon">&#127760;</span> Mạng &amp; UPnP</div>
+    <div class="nav-item" data-page="router"><span class="nav-icon">&#128268;</span> Router tĩnh</div>
     <div class="nav-item" data-page="system"><span class="nav-icon">&#128187;</span> Hệ thống</div>
   </div>
 
@@ -147,14 +123,145 @@
         <div class="card"><div class="card-title">Uptime</div><div class="card-value" id="uptimeVal">—</div><div class="card-sub">Thời gian hoạt động</div></div>
         <div class="card"><div class="card-title">Nền tảng</div><div class="card-value" id="platformVal" style="font-size:18px">—</div><div class="card-sub">Hệ điều hành</div></div>
       </div>
+      <div class="section">
+        <div class="section-title">Lưu ý về UPnP &amp; máy tắt</div>
+        <div class="info-box">✅ UPnP TTL đã tăng lên <strong>86400 giây (24h)</strong>. Rule trên router sẽ tồn tại tối đa 24h kể từ lần renew cuối cùng — tức là nếu laptop tắt dưới 24h, camera vẫn có thể truy cập từ ngoài.</div>
+        <div class="warn-box">⚠️ Để camera <strong>luôn</strong> truy cập được dù laptop tắt lâu hơn, hãy cấu hình <strong>Port Forward tĩnh</strong> trên router. Xem hướng dẫn ở tab <strong>Router tĩnh</strong>.</div>
+      </div>
     </div>
 
     <!-- Network -->
     <div id="page-network" class="hidden">
-      <div class="page-title">Mạng & UPnP</div>
+      <div class="page-title">Mạng &amp; UPnP</div>
       <div class="section">
-        <div class="section-title">Thông tin UPnP</div>
+        <div class="section-title">Thông tin UPnP <span class="badge badge-blue" style="font-size:10px;margin-left:8px">TTL 86400s</span></div>
         <pre id="upnpData">Đang tải...</pre>
+      </div>
+    </div>
+
+    <!-- Router Static Guide -->
+    <div id="page-router" class="hidden">
+      <div class="page-title">Cấu hình Port Forward tĩnh trên Router</div>
+
+      <div class="section">
+        <div class="section-title">Tại sao cần cấu hình tĩnh?</div>
+        <p style="font-size:13px;color:#94a3b8;line-height:1.7;margin-bottom:12px">
+          UPnP tự động mở cổng nhưng có TTL giới hạn — rule sẽ bị xóa nếu laptop tắt lâu hơn 24h.
+          Khi cấu hình <strong style="color:#f1f5f9">Port Forward tĩnh</strong> trực tiếp trên router,
+          rule tồn tại <strong style="color:#f1f5f9">vĩnh viễn</strong> dù laptop hay camera client tắt.
+        </p>
+        <div class="warn-box">⚠️ Nếu ISP cấp IP động (thay đổi), hãy dùng DDNS (DuckDNS, No-IP…) để có domain cố định thay vì IP.</div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Các cổng cần mở</div>
+        <table class="port-table">
+          <thead><tr><th>Cổng ngoài</th><th>Cổng trong</th><th>IP đích</th><th>Giao thức</th><th>Mục đích</th></tr></thead>
+          <tbody>
+            <tr><td><code>1984</code></td><td><code>1984</code></td><td>IP laptop</td><td>TCP</td><td>go2rtc API / Stream</td></tr>
+            <tr><td><code>8555</code></td><td><code>8555</code></td><td>IP laptop</td><td>TCP</td><td>WebRTC (xem trực tiếp)</td></tr>
+            <tr><td><code>10554</code></td><td><code>554</code></td><td><strong>IP camera</strong></td><td>TCP</td><td>RTSP camera #1 (trực tiếp)</td></tr>
+            <tr><td><code>10555</code></td><td><code>554</code></td><td><strong>IP camera #2</strong></td><td>TCP</td><td>RTSP camera #2 (nếu có)</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12px;color:#64748b;margin-top:10px">💡 Cổng 10554+ trỏ thẳng vào IP camera (không qua laptop) — camera vẫn xem được dù laptop tắt.</p>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Hướng dẫn theo hãng router</div>
+        <div class="router-tabs">
+          <button class="rtab active" data-brand="tplink">TP-Link</button>
+          <button class="rtab" data-brand="asus">ASUS</button>
+          <button class="rtab" data-brand="dlink">D-Link</button>
+          <button class="rtab" data-brand="mikrotik">MikroTik</button>
+          <button class="rtab" data-brand="vnpt">VNPT / Viettel</button>
+        </div>
+
+        <!-- TP-Link -->
+        <div class="rpanel active" id="brand-tplink">
+          <ol class="step-list">
+            <li><div class="step-body">Mở trình duyệt, vào <strong>http://192.168.0.1</strong> (hoặc <strong>http://tplinkwifi.net</strong>). Đăng nhập bằng tài khoản admin router.</div></li>
+            <li><div class="step-body">Vào menu <strong>Advanced → NAT Forwarding → Virtual Servers</strong>.</div></li>
+            <li><div class="step-body">Bấm <strong>Add</strong>. Điền thông tin:<br>
+              • <strong>External Port:</strong> <code>1984</code><br>
+              • <strong>Internal IP:</strong> IP laptop (ví dụ <code>192.168.1.100</code>)<br>
+              • <strong>Internal Port:</strong> <code>1984</code><br>
+              • <strong>Protocol:</strong> TCP<br>
+              Bấm <strong>Save</strong>. Lặp lại cho các cổng còn lại.
+            </div></li>
+            <li><div class="step-body">Để forward thẳng vào camera (không cần laptop), đặt <strong>Internal IP</strong> là IP camera (ví dụ <code>192.168.1.200</code>) và <strong>Internal Port</strong> là <code>554</code>.</div></li>
+            <li><div class="step-body">Bấm <strong>Save</strong> và <strong>Reboot</strong> router nếu được yêu cầu.</div></li>
+          </ol>
+        </div>
+
+        <!-- ASUS -->
+        <div class="rpanel" id="brand-asus">
+          <ol class="step-list">
+            <li><div class="step-body">Vào <strong>http://192.168.1.1</strong> hoặc <strong>http://router.asus.com</strong>. Đăng nhập.</div></li>
+            <li><div class="step-body">Vào <strong>WAN → Virtual Server / Port Forwarding</strong>.</div></li>
+            <li><div class="step-body">Bấm <strong>Add profile</strong>. Điền:<br>
+              • <strong>Service Name:</strong> <code>ServiceManager-API</code><br>
+              • <strong>Protocol:</strong> TCP<br>
+              • <strong>External Port:</strong> <code>1984</code><br>
+              • <strong>Internal IP:</strong> IP laptop hoặc IP camera<br>
+              • <strong>Internal Port:</strong> <code>1984</code> (hoặc <code>554</code> cho camera trực tiếp)
+            </div></li>
+            <li><div class="step-body">Bật công tắc <strong>Enable Virtual Server</strong> ở đầu trang nếu chưa bật.</div></li>
+            <li><div class="step-body">Bấm <strong>Apply</strong>.</div></li>
+          </ol>
+        </div>
+
+        <!-- D-Link -->
+        <div class="rpanel" id="brand-dlink">
+          <ol class="step-list">
+            <li><div class="step-body">Vào <strong>http://192.168.0.1</strong>. Đăng nhập (mặc định: admin / không mật khẩu).</div></li>
+            <li><div class="step-body">Vào <strong>Advanced → Port Forwarding</strong>.</div></li>
+            <li><div class="step-body">Bấm <strong>Add Rules</strong>. Điền:<br>
+              • <strong>Name:</strong> <code>SvcMgr-API</code><br>
+              • <strong>IP Address:</strong> IP laptop hoặc IP camera<br>
+              • <strong>TCP:</strong> <code>1984</code><br>
+              Lặp lại cho cổng 8555, 10554.
+            </div></li>
+            <li><div class="step-body">Bấm <strong>Save Settings</strong>.</div></li>
+          </ol>
+        </div>
+
+        <!-- MikroTik -->
+        <div class="rpanel" id="brand-mikrotik">
+          <div class="info-box">MikroTik dùng lệnh terminal hoặc Winbox. Dưới đây là lệnh RouterOS.</div>
+          <p style="font-size:13px;color:#94a3b8;margin:12px 0 8px">Mở <strong>Winbox</strong> → <strong>IP → Firewall → NAT → Add (+)</strong>:</p>
+          <ol class="step-list">
+            <li><div class="step-body">Tab <strong>General</strong>: Chain = <code>dstnat</code>, Protocol = <code>tcp</code>, Dst. Port = <code>1984</code>.</div></li>
+            <li><div class="step-body">Tab <strong>Action</strong>: Action = <code>dst-nat</code>, To Addresses = IP laptop, To Ports = <code>1984</code>. Bấm <strong>OK</strong>.</div></li>
+            <li><div class="step-body">Hoặc dùng lệnh terminal:<div class="copy-row"><code>/ip firewall nat add chain=dstnat protocol=tcp dst-port=1984 action=dst-nat to-addresses=192.168.1.100 to-ports=1984</code><button class="copy-btn" onclick="copyCode(this)">Copy</button></div></div></li>
+            <li><div class="step-body">Lặp lại cho cổng 8555, 10554 (với to-addresses là IP camera cho cổng 10554).</div></li>
+          </ol>
+        </div>
+
+        <!-- VNPT / Viettel -->
+        <div class="rpanel" id="brand-vnpt">
+          <div class="warn-box">⚠️ Modem VNPT/Viettel thường có 2 lớp NAT (modem + router). Nếu router cắm vào modem, bạn cần forward cổng trên <strong>cả hai thiết bị</strong>, hoặc đặt router vào <strong>DMZ</strong> của modem.</div>
+          <ol class="step-list">
+            <li><div class="step-body">Vào <strong>http://192.168.1.1</strong> (modem VNPT) hoặc <strong>http://192.168.0.1</strong> (Viettel). Tài khoản thường là <code>admin / admin</code> hoặc in ở nhãn modem.</div></li>
+            <li><div class="step-body">Tìm mục <strong>Port Mapping</strong>, <strong>Virtual Server</strong>, hoặc <strong>NAT/DMZ</strong> (tuỳ firmware).</div></li>
+            <li><div class="step-body">Thêm rule:<br>
+              • WAN Port: <code>1984</code> → LAN IP laptop : <code>1984</code><br>
+              • WAN Port: <code>8555</code> → LAN IP laptop : <code>8555</code><br>
+              • WAN Port: <code>10554</code> → LAN IP <strong>camera</strong> : <code>554</code>
+            </div></li>
+            <li><div class="step-body">Nếu không tìm thấy mục Port Mapping, đặt IP router của bạn vào <strong>DMZ</strong> của modem để modem chuyển toàn bộ traffic về router, rồi cấu hình port forward trên router.</div></li>
+            <li><div class="step-body">Lưu &amp; khởi động lại modem.</div></li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="section-title">Kiểm tra sau khi cấu hình</div>
+        <ol class="step-list">
+          <li><div class="step-body">Truy cập <a href="https://canyouseeme.org" target="_blank" style="color:#60a5fa">canyouseeme.org</a> — nhập từng cổng (1984, 8555, 10554) để kiểm tra từ internet.</div></li>
+          <li><div class="step-body">Thử URL RTSP camera trực tiếp từ mạng khác: <code>rtsp://&lt;IP_công_cộng&gt;:10554/stream1</code> bằng VLC.</div></li>
+          <li><div class="step-body">Nếu ISP đổi IP công cộng thường xuyên, đăng ký <a href="https://www.duckdns.org" target="_blank" style="color:#60a5fa">DuckDNS</a> (miễn phí) và cài agent cập nhật IP tự động.</div></li>
+        </ol>
       </div>
     </div>
 
@@ -213,6 +320,24 @@
       if (page === 'system') loadSystem();
     });
   });
+
+  // Router brand tabs
+  document.querySelectorAll('.rtab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.rtab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.rpanel').forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('brand-' + tab.dataset.brand).classList.add('active');
+    });
+  });
+
+  function copyCode(btn) {
+    const code = btn.previousElementSibling.textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      btn.textContent = 'Đã copy!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    });
+  }
 
   function fmtUptime(secs) {
     const h = Math.floor(secs / 3600);
