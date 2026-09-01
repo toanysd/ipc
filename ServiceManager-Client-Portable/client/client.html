@@ -91,7 +91,7 @@
       'Content-Type' : 'application/json'
     } : null;
 
-    // Device ID
+    // ── Device ID ──
     let deviceId = localStorage.getItem('sm_device_id');
     if (!deviceId) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -136,14 +136,16 @@
     }
 
     // ── Optional modules ──
-    let upnpManager  = null;
-    let go2rtcMgr    = null;
-    let autoNetwork  = null;
-    let tunnelMgr    = null;  // NEW
-    try { upnpManager  = require('../src/upnp-manager');       } catch(e) { console.log('[client] upnp-manager not loaded:', e.message); }
-    try { go2rtcMgr    = require('../src/go2rtc-manager');      } catch(e) { console.log('[client] go2rtc-manager not loaded:', e.message); }
-    try { autoNetwork  = require('../src/auto-network');        } catch(e) { console.log('[client] auto-network not loaded:', e.message); }
-    try { tunnelMgr    = require('../src/tunnel-manager');      } catch(e) { console.log('[client] tunnel-manager not loaded:', e.message); }
+    let upnpManager     = null;
+    let go2rtcMgr       = null;
+    let autoNetwork     = null;
+    let tunnelMgr       = null;
+    let startupMigration = null;
+    try { upnpManager      = require('../src/upnp-manager');        } catch(e) { console.log('[client] upnp-manager not loaded:', e.message); }
+    try { go2rtcMgr        = require('../src/go2rtc-manager');       } catch(e) { console.log('[client] go2rtc-manager not loaded:', e.message); }
+    try { autoNetwork      = require('../src/auto-network');         } catch(e) { console.log('[client] auto-network not loaded:', e.message); }
+    try { tunnelMgr        = require('../src/tunnel-manager');       } catch(e) { console.log('[client] tunnel-manager not loaded:', e.message); }
+    try { startupMigration = require('../src/startup-migration');    } catch(e) { console.log('[client] startup-migration not loaded:', e.message); }
 
     // ── System info ──
     function getSystemInfo() {
@@ -487,7 +489,6 @@
             conn.send({ cmd:'get-auto-network-status-result', data: status });
             break;
           }
-          // ── Tunnel status (mới) ──────────────────────────────────────────
           case 'get-tunnel-status': {
             const ts = tunnelMgr ? tunnelMgr.getStatus() : { cloudflare:{running:false,url:null}, tailscale:{running:false,ip:null}, ready:false };
             conn.send({ cmd:'get-tunnel-status-result', data: ts });
@@ -536,9 +537,50 @@
       osc.start(); osc.stop(audioCtx.currentTime + 5);
     }
 
+    // ── Helper: khởi động tunnel với config hiện tại ──
+    function getTunnelConfig() {
+      let cfg = {};
+      try {
+        const cfgPath = path.join(os.homedir(), 'AppData', 'Roaming', 'ServiceManager-Client', 'config.json');
+        const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+        if (raw.tailscale_authkey) cfg.tailscale_authkey = raw.tailscale_authkey;
+      } catch(e) {}
+      return cfg;
+    }
+
+    async function initTunnel() {
+      if (!tunnelMgr) return;
+      return tunnelMgr.init({
+        supabaseReq: supabaseRequest,
+        devId      : deviceId,
+        config     : getTunnelConfig()
+      });
+    }
+
+    // ── IPC: lắng nghe network-changed từ main process ──
+    // Main process (network-watcher.js) phát hiện IP đổi / wakeup → gửi xuống → restart tunnel
+    ipcRenderer.on('network-changed', (_, info) => {
+      console.log(`[client] ⚡ Network changed (${info.reason}: ${info.ip}) → restarting tunnels...`);
+      if (tunnelMgr) {
+        tunnelMgr.stop();
+        setTimeout(() => initTunnel(), 2000);
+      }
+    });
+
+    ipcRenderer.on('network-lost', () => {
+      console.log('[client] ❌ Network lost. Tunnels will auto-retry when reconnected.');
+      // Không cần làm gì — tunnel-manager tự retry mỗi 5 phút
+    });
+
     // ── Startup ──
     async function start() {
-      // UPnP (tốt nhất nếu router hỗ trợ)
+      // 1. Auto migration Supabase (chạy 1 lần, không blocking)
+      if (startupMigration) {
+        startupMigration.runMigrations(supabaseRequest, SUPABASE_URL, SUPABASE_KEY, deviceId)
+          .catch(e => console.warn('[migration] Error:', e.message));
+      }
+
+      // 2. UPnP
       if (upnpManager) {
         upnpManager.start().then(available => {
           if (available) {
@@ -548,11 +590,12 @@
         }).catch(e => console.log('[upnp] start error:', e.message));
       }
 
+      // 3. Register & heartbeat
       await registerDevice();
       await fetchSettings();
       setInterval(async () => { await heartbeat(); await fetchSettings(); }, 45000);
 
-      // Auto-network (scan camera, go2rtc)
+      // 4. Auto-network (scan camera, go2rtc)
       if (autoNetwork) {
         let savedCreds = null;
         try { savedCreds = JSON.parse(localStorage.getItem('sm_auto_camera_creds')); } catch(e) {}
@@ -572,27 +615,15 @@
           .catch(e => console.log('[auto-net] Error:', e.message));
       }
 
-      // Tunnel manager (Cloudflare + Tailscale — Japan ISP safe)
-      if (tunnelMgr) {
-        // Đọc tailscale_authkey từ config.json nếu có
-        let tunnelConfig = {};
-        try {
-          const cfgPath = require('path').join(
-            require('os').homedir(), 'AppData', 'Roaming', 'ServiceManager-Client', 'config.json'
-          );
-          const cfg = JSON.parse(require('fs').readFileSync(cfgPath, 'utf8'));
-          if (cfg.tailscale_authkey) tunnelConfig.tailscale_authkey = cfg.tailscale_authkey;
-        } catch(e) {}
-
-        tunnelMgr.init({
-          supabaseReq: supabaseRequest,
-          devId      : deviceId,
-          config     : tunnelConfig
-        }).then(r => {
-          console.log('[tunnel] Cloudflare URL:', r.cfUrl || 'N/A');
-          console.log('[tunnel] Tailscale IP  :', r.tsIp  || 'N/A');
-        }).catch(e => console.log('[tunnel] Error:', e.message));
-      }
+      // 5. Tunnel manager (Cloudflare + Tailscale — Japan ISP / DS-Lite safe)
+      initTunnel()
+        .then(r => {
+          if (r) {
+            console.log('[tunnel] ✅ Cloudflare URL:', r.cfUrl || 'N/A');
+            console.log('[tunnel] ✅ Tailscale IP  :', r.tsIp  || 'N/A');
+          }
+        })
+        .catch(e => console.log('[tunnel] Error:', e.message));
     }
 
     start();
