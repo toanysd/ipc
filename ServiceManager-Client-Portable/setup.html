@@ -13,7 +13,10 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      overflow: hidden;
     }
+
+    /* ── Container ─────────────────────────────────── */
     .wrap {
       width: 520px;
       background: #1e293b;
@@ -29,53 +32,202 @@
     }
     .logo-icon {
       width: 44px; height: 44px;
-      background: linear-gradient(135deg, #2563eb, #0d9488);
+      background: linear-gradient(135deg,#2563eb,#0d9488);
       border-radius: 12px;
       display: flex; align-items: center; justify-content: center;
       font-size: 22px;
     }
     .logo-text { font-size: 20px; font-weight: 700; color: #f1f5f9; }
-    .logo-sub { font-size: 12px; color: #64748b; }
-    h2 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
-    p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
+    .logo-sub  { font-size: 12px; color: #64748b; }
+
+    /* ── Step indicator ─────────────────────────────── */
+    .steps {
+      display: flex;
+      align-items: center;
+      margin-bottom: 28px;
+      gap: 0;
+    }
+    .step-dot {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: #334155;
+      color: #64748b;
+      font-size: 12px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: all .25s;
+    }
+    .step-dot.active { background: #2563eb; color: #fff; }
+    .step-dot.done   { background: #0d9488; color: #fff; }
+    .step-line {
+      flex: 1;
+      height: 2px;
+      background: #334155;
+      transition: background .25s;
+    }
+    .step-line.done { background: #0d9488; }
+
+    /* ── Steps content ──────────────────────────────── */
+    .step-panel { display: none; }
+    .step-panel.active { display: block; }
+
+    h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    p  { color: #94a3b8; font-size: 13px; line-height: 1.6; margin-bottom: 20px; }
+
+    /* ── Role cards (Step 1) ────────────────────────── */
     .roles { display: flex; gap: 14px; }
     .role-card {
       flex: 1;
       background: #0f172a;
       border: 2px solid #334155;
       border-radius: 14px;
-      padding: 22px 16px;
+      padding: 22px 14px;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all .2s;
       text-align: center;
     }
-    .role-card:hover { border-color: #2563eb; background: #1e3a5f; }
-    .role-card.client:hover { border-color: #0d9488; background: #0f2e2b; }
-    .role-icon { font-size: 32px; margin-bottom: 10px; }
-    .role-name { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
-    .role-desc { font-size: 12px; color: #64748b; line-height: 1.5; }
+    .role-card:hover         { border-color: #2563eb; background: #1e3a5f; }
+    .role-card.client:hover  { border-color: #0d9488; background: #0f2e2b; }
+    .role-card.selected.manager { border-color: #2563eb; background: #1e3a5f; }
+    .role-card.selected.client  { border-color: #0d9488; background: #0f2e2b; }
+    .role-icon  { font-size: 32px; margin-bottom: 10px; }
+    .role-name  { font-size: 15px; font-weight: 700; margin-bottom: 6px; }
+    .role-desc  { font-size: 11px; color: #64748b; line-height: 1.5; }
     .role-card.manager .role-name { color: #60a5fa; }
-    .role-card.client .role-name { color: #2dd4bf; }
+    .role-card.client  .role-name { color: #2dd4bf; }
+
+    /* ── Form (Step 2) ──────────────────────────────── */
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      letter-spacing: .4px;
+    }
+    .field { margin-bottom: 16px; }
+    .input-wrap { position: relative; }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 10px 38px 10px 12px;
+      background: #0f172a;
+      border: 1.5px solid #334155;
+      border-radius: 10px;
+      color: #f1f5f9;
+      font-size: 13px;
+      outline: none;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: #2563eb; }
+    .eye-btn {
+      position: absolute; right: 10px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      cursor: pointer; font-size: 15px;
+      color: #475569; line-height: 1;
+      padding: 0;
+    }
+    .eye-btn:hover { color: #94a3b8; }
+    .hint-link {
+      display: inline-block;
+      font-size: 11px;
+      color: #2563eb;
+      margin-top: 4px;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    .pin-row { display: flex; gap: 10px; }
+    .pin-row .field { flex: 1; }
+    .skip-note {
+      font-size: 11px;
+      color: #475569;
+      margin-top: -10px;
+      margin-bottom: 16px;
+    }
+
+    /* ── Confirm (Step 3) ───────────────────────────── */
+    .confirm-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+      font-size: 13px;
+    }
+    .confirm-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #334155;
+    }
+    .confirm-table td:first-child { color: #64748b; width: 130px; }
+    .confirm-table td:last-child  { color: #f1f5f9; word-break: break-all; }
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px; font-weight: 700;
+    }
+    .badge.manager { background: #1e3a5f; color: #60a5fa; }
+    .badge.client  { background: #0f2e2b; color: #2dd4bf; }
+    .badge.ok      { background: #064e3b; color: #34d399; }
+    .badge.skip    { background: #1e293b; color: #64748b; }
+
+    /* ── Buttons ────────────────────────────────────── */
+    .btn-row {
+      display: flex;
+      gap: 10px;
+      margin-top: 22px;
+    }
+    .btn {
+      flex: 1;
+      padding: 11px 0;
+      border: none;
+      border-radius: 10px;
+      font-size: 14px; font-weight: 600;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-back  { background: #1e293b; color: #94a3b8; flex: 0 0 90px; }
+    .btn-back:hover  { background: #334155; }
+    .btn-next  { background: #2563eb; color: #fff; }
+    .btn-next:hover  { background: #1d4ed8; }
+    .btn-start { background: linear-gradient(135deg,#2563eb,#0d9488); color: #fff; }
+    .btn-start:hover { opacity: .9; }
+    .btn:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Warning box ────────────────────────────────── */
     .warn {
-      margin-top: 20px;
-      padding: 12px 16px;
+      margin-top: 18px;
+      padding: 10px 14px;
       background: #1a2640;
       border-left: 3px solid #f59e0b;
       border-radius: 8px;
-      font-size: 12px;
+      font-size: 11px;
       color: #94a3b8;
+      line-height: 1.5;
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="logo">
-      <div class="logo-icon">&#9881;</div>
-      <div>
-        <div class="logo-text">Service Manager</div>
-        <div class="logo-sub">Thiết lập lần đầu</div>
-      </div>
+<div class="wrap">
+
+  <!-- Logo -->
+  <div class="logo">
+    <div class="logo-icon">&#9881;</div>
+    <div>
+      <div class="logo-text">Service Manager</div>
+      <div class="logo-sub" id="stepLabel">Thiết lập lần đầu · Bước 1 / 3</div>
     </div>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step-dot active" id="dot1">1</div>
+    <div class="step-line" id="line1"></div>
+    <div class="step-dot" id="dot2">2</div>
+    <div class="step-line" id="line2"></div>
+    <div class="step-dot" id="dot3">3</div>
+  </div>
+
+  <!-- ── STEP 1: Chọn role ── -->
+  <div class="step-panel active" id="s1">
     <h2>Chọn chế độ hoạt động</h2>
     <p>Chọn vai trò cho máy tính này. Có thể thay đổi sau trong phần Cài đặt.</p>
     <div class="roles">
@@ -90,16 +242,190 @@
         <div class="role-desc">Chạy ẩn, cho phép truy cập từ xa và quản lý camera.</div>
       </div>
     </div>
-    <div class="warn">&#9888; Sau khi chọn, ứng dụng sẽ khởi động lại ở chế độ đã chọn.</div>
+    <div class="warn">&#9888; Sau khi hoàn tất thiết lập, ứng dụng sẽ khởi động lại ở chế độ đã chọn.</div>
+    <div class="btn-row">
+      <button class="btn btn-next" id="s1Next" disabled>Tiếp theo &rarr;</button>
+    </div>
   </div>
-  <script>
-    const { ipcRenderer } = require('electron');
-    document.getElementById('managerBtn').addEventListener('click', () => {
-      ipcRenderer.invoke('switch-role', 'manager');
-    });
-    document.getElementById('clientBtn').addEventListener('click', () => {
-      ipcRenderer.invoke('switch-role', 'client');
-    });
-  </script>
+
+  <!-- ── STEP 2: Supabase + PIN ── -->
+  <div class="step-panel" id="s2">
+    <h2>Kết nối Supabase</h2>
+    <p>Nhập thông tin dự án Supabase để đồng bộ dữ liệu. Bỏ trống nếu muốn dùng offline.</p>
+
+    <div class="field">
+      <label>Supabase URL</label>
+      <input type="text" id="sbUrl" placeholder="https://xxxxxxxxxxxx.supabase.co" autocomplete="off" spellcheck="false" />
+      <span class="hint-link" id="sbHintLink">&#128279; Lấy ở đâu?</span>
+    </div>
+    <div class="field">
+      <label>Anon Key (public)</label>
+      <div class="input-wrap">
+        <input type="password" id="sbKey" placeholder="eyJhbGciOiJIUzI1NiIs..." autocomplete="off" spellcheck="false" />
+        <button class="eye-btn" id="toggleKey" tabindex="-1">&#128065;</button>
+      </div>
+    </div>
+
+    <div class="pin-row">
+      <div class="field">
+        <label>PIN truy cập Dashboard</label>
+        <div class="input-wrap">
+          <input type="password" id="pinInput" placeholder="Tối thiểu 4 ký tự" maxlength="12" autocomplete="new-password" />
+          <button class="eye-btn" id="togglePin" tabindex="-1">&#128065;</button>
+        </div>
+      </div>
+      <div class="field">
+        <label>Xác nhận PIN</label>
+        <input type="password" id="pinConfirm" placeholder="Nhập lại PIN" maxlength="12" />
+      </div>
+    </div>
+    <div class="skip-note" id="pinMsg"></div>
+
+    <div class="btn-row">
+      <button class="btn btn-back" id="s2Back">&larr;</button>
+      <button class="btn btn-next" id="s2Next">Tiếp theo &rarr;</button>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: Xác nhận ── -->
+  <div class="step-panel" id="s3">
+    <h2>Xác nhận & Khởi động</h2>
+    <p>Kiểm tra lại thông tin bên dưới rồi nhấn <strong>Bắt đầu</strong>.</p>
+    <table class="confirm-table" id="confirmTable"></table>
+    <div class="btn-row">
+      <button class="btn btn-back" id="s3Back">&larr;</button>
+      <button class="btn btn-start" id="startBtn">&#9654; Bắt đầu</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+const { ipcRenderer } = require('electron');
+const path = require('path');
+const fs   = require('fs');
+
+// ── Config path (userData / homedir fallback) ──────────────────
+function getConfigPath() {
+  try {
+    const { app } = require('electron').remote || require('@electron/remote');
+    return path.join(app.getPath('userData'), 'config.json');
+  } catch(e) {}
+  // Fallback: homedir (portable without remote module)
+  return path.join(require('os').homedir(), '.servicemanager', 'config.json');
+}
+
+// ── State ──────────────────────────────────────────────────────
+let selectedRole = null;
+
+// ── Helpers ───────────────────────────────────────────────────
+function setStep(n) {
+  [1,2,3].forEach(i => {
+    document.getElementById('s' + i).classList.toggle('active', i === n);
+    const dot = document.getElementById('dot' + i);
+    dot.className = 'step-dot' + (i < n ? ' done' : i === n ? ' active' : '');
+  });
+  if (n > 1) { document.getElementById('line1').classList.toggle('done', n >= 2); }
+  if (n > 2) { document.getElementById('line2').classList.toggle('done', n >= 3); }
+  document.getElementById('stepLabel').textContent = 'Thiết lập lần đầu · Bước ' + n + ' / 3';
+}
+
+function val(id) { return document.getElementById(id).value.trim(); }
+
+// ── Step 1: chọn role ──────────────────────────────────────────
+document.getElementById('managerBtn').addEventListener('click', () => selectRole('manager'));
+document.getElementById('clientBtn' ).addEventListener('click', () => selectRole('client'));
+
+function selectRole(role) {
+  selectedRole = role;
+  ['manager','client'].forEach(r => document.getElementById(r+'Btn').classList.toggle('selected', r === role));
+  document.getElementById('s1Next').disabled = false;
+}
+
+document.getElementById('s1Next').addEventListener('click', () => setStep(2));
+
+// ── Step 2: toggle visibility ──────────────────────────────────
+document.getElementById('toggleKey').addEventListener('click', () => {
+  const el = document.getElementById('sbKey');
+  el.type = el.type === 'password' ? 'text' : 'password';
+});
+document.getElementById('togglePin').addEventListener('click', () => {
+  const el = document.getElementById('pinInput');
+  el.type = el.type === 'password' ? 'text' : 'password';
+});
+
+// hint link
+document.getElementById('sbHintLink').addEventListener('click', () => {
+  require('electron').shell.openExternal('https://supabase.com/dashboard/project/_/settings/api');
+});
+
+// PIN validate
+function validatePin() {
+  const pin = val('pinInput'), conf = val('pinConfirm');
+  const msg = document.getElementById('pinMsg');
+  if (!pin) { msg.textContent = ''; return true; } // bỏ trống → dùng PIN mặc định
+  if (pin.length < 4)  { msg.style.color='#f87171'; msg.textContent = 'PIN phải tối thiểu 4 ký tự.'; return false; }
+  if (pin !== conf)    { msg.style.color='#f87171'; msg.textContent = 'PIN xác nhận không khớp.'; return false; }
+  msg.style.color = '#34d399'; msg.textContent = '✓ PIN hợp lệ.';
+  return true;
+}
+document.getElementById('pinInput'  ).addEventListener('input', validatePin);
+document.getElementById('pinConfirm').addEventListener('input', validatePin);
+
+document.getElementById('s2Back').addEventListener('click', () => setStep(1));
+document.getElementById('s2Next').addEventListener('click', () => {
+  if (!validatePin()) return;
+  buildConfirmTable();
+  setStep(3);
+});
+
+// ── Step 3: build confirm table ────────────────────────────────
+function buildConfirmTable() {
+  const url  = val('sbUrl');
+  const key  = val('sbKey');
+  const pin  = val('pinInput');
+  const rows = [
+    ['Chế độ',    `<span class="badge ${selectedRole}">${selectedRole === 'manager' ? '&#128187; Manager' : '&#128272; Client'}</span>`],
+    ['Supabase URL', url  ? `<span style="color:#38bdf8">${url}</span>`  : '<span class="badge skip">Bỏ qua (offline)</span>'],
+    ['Anon Key',     key  ? '<span class="badge ok">&#10003; Đã nhập</span>'  : '<span class="badge skip">Bỏ qua</span>'],
+    ['PIN',          pin  ? '<span class="badge ok">&#10003; Đã đặt</span>'   : '<span class="badge skip">Dùng mặc định</span>']
+  ];
+  const table = document.getElementById('confirmTable');
+  table.innerHTML = rows.map(([k,v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join('');
+}
+
+// ── Step 3: Start ──────────────────────────────────────────────
+document.getElementById('s3Back').addEventListener('click', () => setStep(2));
+document.getElementById('startBtn').addEventListener('click', async () => {
+  document.getElementById('startBtn').disabled = true;
+  document.getElementById('startBtn').textContent = 'Đang lưu...';
+
+  const url  = val('sbUrl');
+  const key  = val('sbKey');
+  const pin  = val('pinInput');
+
+  // 1. Lưu Supabase credentials vào localStorage (renderer)
+  if (url) localStorage.setItem('sm_supabase_url', url);
+  if (key) localStorage.setItem('sm_supabase_key', key);
+
+  // 2. Lưu config (role + pin) qua IPC → main process ghi file
+  const saveData = { role: selectedRole };
+  if (pin) saveData.pin = pin;
+  // Gửi IPC lưu file trước khi switch-role restart
+  await ipcRenderer.invoke('save-config', saveData).catch(e => console.warn('[setup] save-config error:', e.message));
+
+  // 3. Switch role → main.js sẽ khởi động lại window đúng role
+  ipcRenderer.invoke('switch-role', selectedRole);
+});
+
+// ── Auto-fill nếu đã có dữ liệu trước ────────────────────────
+try {
+  const savedUrl = localStorage.getItem('sm_supabase_url');
+  const savedKey = localStorage.getItem('sm_supabase_key');
+  if (savedUrl) document.getElementById('sbUrl').value = savedUrl;
+  if (savedKey) document.getElementById('sbKey').value = savedKey;
+} catch(e) {}
+</script>
 </body>
 </html>
