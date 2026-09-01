@@ -4,10 +4,8 @@ const fs   = require('fs');
 const os   = require('os');
 const { execSync, exec, spawn } = require('child_process');
 
-// Tên hiển thị trong Task Manager và tiến trình
 app.setName('Service Manager');
 
-// Tách userData theo role để manager và client cùng máy không xung đột
 const cmdRoleArg = process.argv.find(a => a.startsWith('--role='));
 const cmdRole    = cmdRoleArg ? cmdRoleArg.split('=')[1] : null;
 
@@ -23,14 +21,13 @@ const config = require('./src/config');
 let mainWindow;
 let clientWindow;
 let go2rtcProcess;
+let networkWatcher = null;
+let tunnelMgrNode  = null;  // tunnel-manager loaded in main process for network-watcher integration
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── Helpers ─────────────────────────────────────────────────────────────────────
 
-/**
- * Resolve path to app file, hỗ trợ cả chạy từ source lẫn chạy từ portable exe.
- */
 function resolveAppFile(...parts) {
     const candidates = [
         path.join(__dirname, ...parts),
@@ -42,7 +39,7 @@ function resolveAppFile(...parts) {
     return candidates[0];
 }
 
-// ── Role Management ─────────────────────────────────────────────────
+// ── Role Management ───────────────────────────────────────────────────────────────
 
 function getRoleFromRegistry() {
     try {
@@ -70,13 +67,44 @@ function setAppRole(role) {
     config.save(configPath, { role });
 }
 
-// ── Windows ──────────────────────────────────────────────────────────────
+// ── go2rtc launcher (với auto-restart) ───────────────────────────────────────────────
+
+let go2rtcRestartTimer  = null;
+let go2rtcShouldRestart = true;
+
+function startGo2rtc() {
+    const go2rtcPackaged = path.join(process.resourcesPath || '', 'go2rtc.exe');
+    const go2rtcLocal    = resolveAppFile('resources', 'go2rtc.exe');
+    const go2rtcExe = fs.existsSync(go2rtcPackaged) ? go2rtcPackaged
+                    : fs.existsSync(go2rtcLocal)     ? go2rtcLocal
+                    : null;
+
+    if (!go2rtcExe) { console.warn('[go2rtc] Executable not found.'); return; }
+
+    go2rtcProcess = spawn(go2rtcExe, [], { windowsHide: true });
+    console.log('[go2rtc] Started from:', go2rtcExe);
+
+    go2rtcProcess.on('error', err => console.error('[go2rtc] Error:', err.message));
+    go2rtcProcess.on('exit', (code) => {
+        console.log(`[go2rtc] Exited (code ${code}).`);
+        go2rtcProcess = null;
+        if (go2rtcShouldRestart) {
+            if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
+            go2rtcRestartTimer = setTimeout(() => {
+                if (go2rtcShouldRestart) {
+                    console.log('[go2rtc] Restarting...');
+                    startGo2rtc();
+                }
+            }, 5000);
+        }
+    });
+}
+
+// ── Windows ─────────────────────────────────────────────────────────────────────────
 
 function createSetupWindow() {
     mainWindow = new BrowserWindow({
-        width: 560,
-        height: 500,   // tăng chút để hiển form Supabase/PIN không bị cắt
-        resizable: false,
+        width: 560, height: 500, resizable: false,
         webPreferences: {
             preload: resolveAppFile('preload.js'),
             contextIsolation: true,
@@ -90,8 +118,6 @@ function createSetupWindow() {
 
 async function startManager() {
     const port = 3456;
-
-    // Giải phóng port nếu bị chiếm
     try {
         if (os.platform() === 'win32') {
             const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', windowsHide: true });
@@ -108,13 +134,10 @@ async function startManager() {
     try {
         await server.start(port, resolveAppFile('dashboard'));
         console.log('[Manager] Web server: http://127.0.0.1:' + port);
-    } catch(e) {
-        console.error('[Manager] Failed to start server:', e);
-    }
+    } catch(e) { console.error('[Manager] Failed to start server:', e); }
 
     mainWindow = new BrowserWindow({
-        width: 1280,
-        height: 840,
+        width: 1280, height: 840,
         webPreferences: {
             preload: resolveAppFile('preload.js'),
             contextIsolation: true,
@@ -123,24 +146,24 @@ async function startManager() {
         autoHideMenuBar: true,
         title: 'Service Manager'
     });
-
     mainWindow.loadURL('http://127.0.0.1:' + port);
     mainWindow.on('closed', () => { mainWindow = null; });
 }
 
 function startClient() {
+    // ── Auto-startup: chạy cùng Windows, không hiển cửa sổ ──
     app.setLoginItemSettings({
         openAtLogin: true,
-        path: app.getPath('exe'),
-        args: ['--role=client']
+        path       : app.getPath('exe'),
+        args       : ['--role=client']
     });
 
     clientWindow = new BrowserWindow({
         show: false,
         title: 'Service Manager',
         webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false
+            nodeIntegration   : true,
+            contextIsolation  : false
         }
     });
 
@@ -152,23 +175,37 @@ function startClient() {
         console.error('[Client] Failed to load client.html:', err);
     });
 
-    // Khởi động go2rtc kèm theo
-    const go2rtcPackaged = path.join(process.resourcesPath || '', 'go2rtc.exe');
-    const go2rtcLocal    = resolveAppFile('resources', 'go2rtc.exe');
-    const go2rtcExe = fs.existsSync(go2rtcPackaged) ? go2rtcPackaged
-                    : fs.existsSync(go2rtcLocal)     ? go2rtcLocal
-                    : null;
+    // ── go2rtc với auto-restart ──
+    go2rtcShouldRestart = true;
+    startGo2rtc();
 
-    if (go2rtcExe) {
-        go2rtcProcess = spawn(go2rtcExe, [], { windowsHide: true });
-        go2rtcProcess.on('error', err => console.error('[go2rtc] Failed to start:', err));
-        console.log('[go2rtc] Started from:', go2rtcExe);
-    } else {
-        console.warn('[go2rtc] Executable not found.');
+    // ── Network Watcher → restart tunnel khi đổi mạng / wakeup ──
+    try {
+        networkWatcher = require('./src/network-watcher');
+
+        networkWatcher.on('network-changed', ({ reason, ip }) => {
+            console.log(`[main] Network changed (${reason}: ${ip}). Restarting tunnel-manager...`);
+            // Báo cho renderer biết để restart tunnel
+            if (clientWindow && !clientWindow.isDestroyed()) {
+                clientWindow.webContents.send('network-changed', { reason, ip });
+            }
+        });
+
+        networkWatcher.on('network-lost', () => {
+            console.log('[main] Network lost.');
+            if (clientWindow && !clientWindow.isDestroyed()) {
+                clientWindow.webContents.send('network-lost');
+            }
+        });
+
+        networkWatcher.start();
+        console.log('[main] Network watcher started.');
+    } catch(e) {
+        console.warn('[main] network-watcher not loaded:', e.message);
     }
 }
 
-// ── IPC Handlers ──────────────────────────────────────────────────────────
+// ── IPC Handlers ──────────────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
 
@@ -204,21 +241,14 @@ app.whenReady().then(() => {
         hostname    : os.hostname()
     }));
 
-    /**
-     * save-config: được gọi từ setup.html step 3 trước khi switch-role.
-     * data: { role, pin? }
-     * Viết vào file config.json trong userData.
-     */
     ipcMain.handle('save-config', (event, data) => {
         try {
             const allowed = {};
             if (data.role) allowed.role = data.role;
             if (data.pin && data.pin.length >= 4) allowed.pin = data.pin;
             const ok = config.save(configPath, allowed);
-            console.log('[main] save-config:', allowed, '-> ok:', ok);
             return { success: ok };
         } catch(e) {
-            console.error('[main] save-config error:', e.message);
             return { success: false, error: e.message };
         }
     });
@@ -229,19 +259,19 @@ app.whenReady().then(() => {
         app.exit(0);
     });
 
-    // Khởi chạy đúng mode
     const role = getAppRole();
     if (!role)                   createSetupWindow();
     else if (role === 'manager') startManager();
     else if (role === 'client')  startClient();
 });
 
-// Giữ process sống (server Express, go2rtc vẫn chạy nền)
 app.on('window-all-closed', () => {});
 
 app.on('will-quit', () => {
-    if (go2rtcProcess) {
-        try { go2rtcProcess.kill(); } catch(e) {}
-    }
+    // Graceful shutdown
+    go2rtcShouldRestart = false;
+    if (go2rtcRestartTimer) clearTimeout(go2rtcRestartTimer);
+    if (go2rtcProcess) { try { go2rtcProcess.kill(); } catch(e) {} }
+    if (networkWatcher) { try { networkWatcher.stop(); } catch(e) {} }
     server.stop();
 });
