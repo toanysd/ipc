@@ -1,7 +1,7 @@
 const { app, BrowserWindow, ipcMain, desktopCapturer } = require('electron');
 const path = require('path');
-const fs = require('fs');
-const os = require('os');
+const fs   = require('fs');
+const os   = require('os');
 const { execSync, exec, spawn } = require('child_process');
 
 // Tên hiển thị trong Task Manager và tiến trình
@@ -9,7 +9,7 @@ app.setName('Service Manager');
 
 // Tách userData theo role để manager và client cùng máy không xung đột
 const cmdRoleArg = process.argv.find(a => a.startsWith('--role='));
-const cmdRole = cmdRoleArg ? cmdRoleArg.split('=')[1] : null;
+const cmdRole    = cmdRoleArg ? cmdRoleArg.split('=')[1] : null;
 
 if (cmdRole === 'client' || process.argv.includes('--client')) {
     app.setPath('userData', path.join(app.getPath('appData'), 'ServiceManager-Client'));
@@ -26,26 +26,23 @@ let go2rtcProcess;
 
 const configPath = path.join(app.getPath('userData'), 'config.json');
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
 
 /**
  * Resolve path to app file, hỗ trợ cả chạy từ source lẫn chạy từ portable exe.
  */
 function resolveAppFile(...parts) {
-    // Khi chạy từ portable .exe, __dirname trỏ về asar resources, còn process.resourcesPath trỏ đúng
     const candidates = [
         path.join(__dirname, ...parts),
         path.join(process.resourcesPath || '', 'app', ...parts)
     ];
     for (const p of candidates) {
-        try {
-            if (fs.existsSync(p)) return p;
-        } catch(e) {}
+        try { if (fs.existsSync(p)) return p; } catch(e) {}
     }
     return candidates[0];
 }
 
-// ─── Role Management ──────────────────────────────────────────────────────────
+// ── Role Management ─────────────────────────────────────────────────
 
 function getRoleFromRegistry() {
     try {
@@ -70,17 +67,15 @@ function getAppRole() {
 
 function setAppRole(role) {
     setRoleInRegistry(role);
-    const conf = config.load(configPath);
-    conf.role = role;
-    config.save(configPath, conf);
+    config.save(configPath, { role });
 }
 
-// ─── Windows ──────────────────────────────────────────────────────────────────
+// ── Windows ──────────────────────────────────────────────────────────────
 
 function createSetupWindow() {
     mainWindow = new BrowserWindow({
         width: 560,
-        height: 420,
+        height: 500,   // tăng chút để hiển form Supabase/PIN không bị cắt
         resizable: false,
         webPreferences: {
             preload: resolveAppFile('preload.js'),
@@ -102,7 +97,7 @@ async function startManager() {
             const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', windowsHide: true });
             for (const line of out.trim().split('\n').filter(Boolean)) {
                 const parts = line.trim().split(/\s+/);
-                const pid = parts[parts.length - 1];
+                const pid   = parts[parts.length - 1];
                 if (pid && pid !== '0' && parseInt(pid, 10) !== process.pid) {
                     try { execSync(`taskkill /PID ${pid} /F`, { windowsHide: true }); } catch(e) {}
                 }
@@ -134,7 +129,6 @@ async function startManager() {
 }
 
 function startClient() {
-    // Đặt autostart khi đăng nhập Windows
     app.setLoginItemSettings({
         openAtLogin: true,
         path: app.getPath('exe'),
@@ -150,7 +144,6 @@ function startClient() {
         }
     });
 
-    // Tự động chấp nhận quyền media (webcam, screen)
     clientWindow.webContents.session.setPermissionRequestHandler((wc, permission, callback) => {
         callback(permission === 'media');
     });
@@ -175,9 +168,10 @@ function startClient() {
     }
 }
 
-// ─── IPC Handlers ─────────────────────────────────────────────────────────────
+// ── IPC Handlers ──────────────────────────────────────────────────────────
 
 app.whenReady().then(() => {
+
     ipcMain.handle('get-desktop-sources', async () => {
         return await desktopCapturer.getSources({ types: ['window', 'screen'] });
     });
@@ -201,14 +195,33 @@ app.whenReady().then(() => {
     });
 
     ipcMain.handle('get-system-info', () => ({
-        platform: os.platform(),
-        arch: os.arch(),
-        cpus: os.cpus(),
-        totalMemory: os.totalmem(),
-        freeMemory: os.freemem(),
-        uptime: os.uptime(),
-        hostname: os.hostname()
+        platform    : os.platform(),
+        arch        : os.arch(),
+        cpus        : os.cpus(),
+        totalMemory : os.totalmem(),
+        freeMemory  : os.freemem(),
+        uptime      : os.uptime(),
+        hostname    : os.hostname()
     }));
+
+    /**
+     * save-config: được gọi từ setup.html step 3 trước khi switch-role.
+     * data: { role, pin? }
+     * Viết vào file config.json trong userData.
+     */
+    ipcMain.handle('save-config', (event, data) => {
+        try {
+            const allowed = {};
+            if (data.role) allowed.role = data.role;
+            if (data.pin && data.pin.length >= 4) allowed.pin = data.pin;
+            const ok = config.save(configPath, allowed);
+            console.log('[main] save-config:', allowed, '-> ok:', ok);
+            return { success: ok };
+        } catch(e) {
+            console.error('[main] save-config error:', e.message);
+            return { success: false, error: e.message };
+        }
+    });
 
     ipcMain.handle('switch-role', (event, role) => {
         setAppRole(role);
@@ -218,7 +231,7 @@ app.whenReady().then(() => {
 
     // Khởi chạy đúng mode
     const role = getAppRole();
-    if (!role)           createSetupWindow();
+    if (!role)                   createSetupWindow();
     else if (role === 'manager') startManager();
     else if (role === 'client')  startClient();
 });
@@ -230,4 +243,5 @@ app.on('will-quit', () => {
     if (go2rtcProcess) {
         try { go2rtcProcess.kill(); } catch(e) {}
     }
+    server.stop();
 });
